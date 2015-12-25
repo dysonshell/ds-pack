@@ -25,7 +25,6 @@
   },
   "homepage": "http://github.com/dysonshell/ds-pack",
   "peerDependencies": {
-    "ds-rewriter": "^1",
     "browserify": "^12",
     "browserify-common-prelude": "^0.5.4",
     "gulp": "^3"
