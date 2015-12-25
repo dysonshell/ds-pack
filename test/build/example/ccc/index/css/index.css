@@ -1,0 +1,5 @@
+@import "/ccc/test/css/test.css";
+@import "/ccc/test/css/test.css";
+@media screen and (min-width: 1280px) {
+    @import "/ccc/test/css/test.css";
+}

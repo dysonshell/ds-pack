@@ -1,0 +1,9 @@
+/*importing /ccc/test/css/test.css from /cloud/cc/ds-build/test/example/ccc/test/css/test.css*/
+
+body {
+  color: red;
+}
+
+/*imported /ccc/test/css/test.css*/
+
+/*/ccc/test/css/test.css already imported early*/
