@@ -17,6 +17,7 @@ var glob = require('glob');
 var isTcpOn = require('is-tcp-on');
 var xtend = require('xtend');
 var partialify = require('partialify');
+var coffeeify = require('coffeeify');
 var babelify = require('babelify');
 var babelConnect = require('babel-connect');
 var grtrequire = require('grtrequire/watch');

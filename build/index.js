@@ -20,6 +20,7 @@ var exec = require('child_process').exec;
 var mqRemove = require('mq-remove');
 var browserify = require('browserify');
 var partialify = require('partialify');
+var coffeeify = require('coffeeify');
 var babelify = require('babelify');
 var es3ify = require('es3ify-safe');
 var grtrequire = require('grtrequire');
@@ -27,7 +28,7 @@ var semver = require('semver');
 var _ = require('lodash');
 var VFile = require('vinyl');
 var Promise = require('bluebird');
-var dsWatchify = require('./watchify');
+var dsWatchify = require('../watchify');
 var respawn = require('respawn');
 var mkdirp = require('mkdirp');
 
@@ -638,7 +639,7 @@ module.exports = function (gulp, opts) {
             });
 
         var tmpAppRoot = path.join(APP_ROOT, '.tmp');
-        respawn([process.execPath, require.resolve('./watchify/server.js')], {
+        respawn([process.execPath, require.resolve('../watchify/server.js')], {
             env: {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
