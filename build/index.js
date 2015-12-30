@@ -189,7 +189,7 @@ module.exports = function (gulp, opts) {
     var afiles = ['!' + DSC + '.tmp/**/*']
         .concat([DSC].concat(searchPrefix).map(p => p + (p.match(/-$/) ? '*/**/*' : '**/*')))
         .reverse();
-    console.log(afiles);
+
     var wafiles = [DSC + '**/*', '!' + DSC + '.tmp/**/*'];
 
     gulp.task('nothing', ()=>{});
@@ -339,6 +339,42 @@ module.exports = function (gulp, opts) {
             done();
         })
     }
+    function removeRowPrefix(row) {
+        if (row.id) {
+            row.id = removePrefix(row.id);
+        }
+        if (row.expose) {
+            row.expose = removePrefix(row.expose);
+        }
+        if (row.dedupe) {
+            row.dedupe = removePrefix(row.dedupe);
+        }
+        if (Object.keys(row.deps || {}).length > 0) {
+            row.deps = _.mapValues(row.deps, removePrefix);
+        }
+        return row;
+    }
+    function removePrefix(filepath) {
+        if (filepath.indexOf(APP_ROOT) === 0) {
+            filepath = filepath.substring(APP_ROOT.length);
+        }
+        if (filepath.indexOf('/.tmp/') === 0) {
+            filepath = filepath.replace(/^\/+(\.tmp\/)?/, '');
+        }
+        filepath = filepath.replace(/^(\/)?\.\.\/node_modules\//, '$1node_modules/');
+        filepath = rmFallbackPath(filepath);
+        return filepath.replace(/^(?:\/+)?(.)/, '/$1');
+    }
+
+    function rmFallbackPath(filepath) {
+        var firstMatch = searchPrefix.filter(sp =>
+                filepath.indexOf(sp) === 0)[0];
+        if (!firstMatch) {
+            return filepath;
+        }
+        return filepath.replace(firstMatch, DSC);
+    }
+
     var globalSrc;
     gulp.task('build-global-js', ['build-assets'], function () {
         return Promise.coroutine(function *() {
@@ -403,6 +439,7 @@ module.exports = function (gulp, opts) {
                         pipeline.get('pack')
                             .splice(0, 1,
                             through.obj(function (row, enc, cb) {
+                                row = removeRowPrefix(row);
                                 this.push(row);
                                 cb();
                             }),

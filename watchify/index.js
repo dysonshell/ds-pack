@@ -45,6 +45,11 @@ var APP_ROOT = config.dsAppRoot;
 var DSC = config.dsComponentPrefix || 'dsc';
 var DSCns = DSC.replace(/^\/+/, '').replace(/\/+$/, '');
 DSC = DSCns + '/';
+var searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
+    if (typeof p !== 'string') return false;
+    if (p.match(/[-\/]$/)) return p;
+    return p.replace(/^\/+/, '') + '/';
+}).filter(Boolean);
 
 var globalLibsPath = path.join(APP_ROOT, DSC, 'libs.json');
 if (!fs.existsSync(globalLibsPath)) {
@@ -82,8 +87,47 @@ function alterPath(filePath) {
 function getRelativePath(filePath) {
     return alterPath(
         path.relative(
-            path.dirname(APP_ROOT), // original APP_ROOT
+            path.dirname(APP_ROOT, '.tmp'), // original APP_ROOT
             filePath));
+}
+
+function removeRowPrefix(row) {
+    if (row.id) {
+        row.id = removePrefix(row.id);
+    }
+    if (row.expose) {
+        row.expose = removePrefix(row.expose);
+    }
+    if (row.dedupe) {
+        row.dedupe = removePrefix(row.dedupe);
+    }
+    if (Object.keys(row.deps || {}).length > 0) {
+        row.deps = _.mapValues(row.deps, removePrefix);
+    }
+    return row;
+}
+var rAppRoot = APP_ROOT.match(/\.tmp\/?$/) ?
+        APP_ROOT.replace(/\/\.tmp\/?$/, '') :
+        APP_ROOT;
+function removePrefix(filepath) {
+    if (filepath.indexOf(rAppRoot) === 0) {
+        filepath = filepath.substring(rAppRoot.length);
+    }
+    if (filepath.indexOf('/.tmp/') === 0) {
+        filepath = filepath.replace(/^\/+(\.tmp\/)?/, '');
+    }
+    filepath = filepath.replace(/^(\/)?\.\.\/node_modules\//, '$1node_modules/');
+    filepath = rmFallbackPath(filepath);
+    return filepath.replace(/^(?:\/+)?(.)/, '/$1');
+}
+
+function rmFallbackPath(filepath) {
+    var firstMatch = searchPrefix.filter(sp =>
+            filepath.indexOf(sp) === 0)[0];
+    if (!firstMatch) {
+        return filepath;
+    }
+    return filepath.replace(firstMatch, DSC);
 }
 
 var WATCHIFY_DELAY = 100;
@@ -212,14 +256,8 @@ function alterPipeline(b, opts) {
     b.pipeline.get('dedupe').splice(0, 1); // arguments[4] bug
     b.pipeline.get('pack')
         .splice(0, 1, through.obj(function (row, enc, next) {
-            if (row.id[0] === '/') {
-                row.id = getRelativePath(row.file);
-            }
+            row = removeRowPrefix(row);
             row.sourceFile = path.join('/-', row.id);
-            Object.keys(row.deps)
-                .forEach(function (key) {
-                    row.deps[key] = getRelativePath(row.deps[key]);
-                });
             this.push(row);
             next();
         }), bpack(xtend(args, {
