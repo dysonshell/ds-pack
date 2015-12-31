@@ -38,7 +38,6 @@ var babel = require('gulp-babel');
 var plumber = require('gulp-plumber');
 var notify = require('gulp-notify');
 var rimraf = require('rimraf');
-var nodemon = require('gulp-nodemon');
 var coffee = require('gulp-coffee');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
@@ -167,7 +166,7 @@ module.exports = function (gulp, opts) {
     function errorAlert(error){
         notify.onError({
             title: "Gulp ERROR!",
-            message: 'see terminal for details.',
+            message: error.message || 'see terminal for details.',
             sound: "Sosumi",
         })(error); //Error Notification
         console.log(error.toString());//Prints Error to Console
@@ -204,7 +203,11 @@ module.exports = function (gulp, opts) {
     });
 
     var nfiles = filterJsFiles(globby.sync(_.flatten([
-            ['!' + path.join(DSC, '.tmp') + '/**/*.js'],
+            [
+                '!' + path.join(DSC, '.tmp') + '/**/*.js',
+                'config/**/*.js',
+                'config/**/*.coffee',
+            ],
             searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
                 '!' + p + '*/js/**/*.js',
                 '' + p + '**/*.js',
@@ -545,7 +548,65 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('dev', ['prepare'], function () {
+        var tmpAppRoot = path.join(APP_ROOT, '.tmp');
+        var m = respawn([process.execPath, path.join(tmpAppRoot, 'ccc', 'index.js')], {
+            cwd: tmpAppRoot,
+            env: {
+                NODE_ENV: 'development',
+                NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
+                NODE_CONFIG_DIR: path.join(tmpAppRoot, 'config'),
+            },
+            maxRestarts: 0,
+            sleep: 0,
+            stdio: 'inherit',
+        });
+        m.start();
+        m.on('exit', function (code, signal) {
+            if (!code) {
+                return;
+            }
+            console.log('-------------------------------------------------------');
+            console.log('app instance exited with code', code, 'and signal', signal);
+            console.log('change and save server side script to restart');
+            console.log('-------------------------------------------------------\n');
+            errorAlert(new Error('app instance exited'));
+        });
 
+        function getAvailableFallbackFile(filePath) {
+            var relativeFilePathWithoutExt = path.relative(path.join(APP_ROOT, DSCns), filePath.replace(/\..+?$/, ''));
+            var paths = _([DSC].concat(searchPrefix))
+                .map(function (dir) {
+                    return [
+                        path.join(APP_ROOT, dir, relativeFilePathWithoutExt + '.js'),
+                        path.join(APP_ROOT, dir, relativeFilePathWithoutExt + '.coffee'),
+                    ];
+                })
+                .flatten()
+                .value();
+            paths.push(
+                path.join(APP_ROOT, DSC, 'index.js'),
+                path.join(APP_ROOT, DSC, 'index.coffee')
+            );
+            return new Promise.coroutine(function* (resolve) {
+                var p;
+                while ( (p = paths.shift()) ) {
+                    if (yield exists(p)) {
+                        return p;
+                    }
+                }
+                return false;
+            })();
+        }
+        var nfiles = filterJsFiles(globby.sync(_.flatten([
+                [
+                    '!' + path.join(DSC, '.tmp') + '/**/*.js',
+                ],
+                searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
+                    '!' + p + '*/js/**/*.js',
+                    '' + p + '**/*.js',
+                    '!' + p + '*/js/**/*.coffee',
+                    '' + p + '**/*.coffee',
+                ]))], true).reverse(), {cwd: APP_ROOT}));
         function readFileThrough() {
             return through.obj(function (file, enc, cb) {
                 if (!file.isNull()) {
@@ -584,28 +645,17 @@ module.exports = function (gulp, opts) {
                     csupdated.push(file);
                     cb();
                     return;
-                }
-                var indexJsPath = path.join(APP_ROOT, DSC, 'index.js');
-                var ijse = yield exists(indexJsPath);
-                if (ijse) {
-                    jsupdate.push(new VFile({
-                        cwd: APP_ROOT,
-                        base: APP_ROOT,
-                        path: indexJsPath,
-                    }));
-                    cb();
-                    return;
-                }
-                var indexCsPath = path.join(APP_ROOT, DSC, 'index.coffee');
-                var icse = yield exists(indexCsPath);
-                if (icse) {
-                    csupdated.push(new VFile({
-                        cwd: APP_ROOT,
-                        base: APP_ROOT,
-                        path: indexCsPath,
-                    }));
-                    cb();
-                    return;
+                } else {
+                    fs.unlink(path.join(tmpAppRoot, path.relative(APP_ROOT, file.path.replace(/\.coffee$/i, '.js'))), (err) => {
+                        console.error(err);
+                        getAvailableFallbackFile(file.path).then(filePath => {
+                            (filePath.match(/\.js$/) ? jsupdate : csupdate).push(new VFile({
+                                cwd: file.cwd,
+                                base: file.base,
+                                path: filePath,
+                            }));
+                        });
+                    });
                 }
                 cb();
             })();
@@ -626,11 +676,16 @@ module.exports = function (gulp, opts) {
                 if (exists) {
                     this.push(file);
                 } else {
-                    csupdate.push(new VFile({
-                        cwd: file.cwd,
-                        base: file.base,
-                        path: file.path.replace(/\.js$/, '.coffee'),
-                    }));
+                    fs.unlink(path.join(tmpAppRoot, path.relative(APP_ROOT, file.path)), (err) => {
+                        console.error(err);
+                        getAvailableFallbackFile(file.path).then(filePath => {
+                            (filePath.match(/\.js$/) ? jsupdate : csupdate).push(new VFile({
+                                cwd: file.cwd,
+                                base: file.base,
+                                path: filePath,
+                            }));
+                        });
+                    });
                 }
                 cb();
             });
@@ -643,9 +698,13 @@ module.exports = function (gulp, opts) {
             .pipe(plumber({errorHandler: errorAlert}))
             .pipe(coffee({bare: true}))
             .pipe(tBase())
+            .pipe(tRmFallbackPath())
             .pipe(dest('.tmp'))
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee compiled');
+                m.stop(function() {
+                    m.start()
+                })
             });
 
         watch(wnjsfiles)
@@ -658,9 +717,13 @@ module.exports = function (gulp, opts) {
                 presets: [require('babel-preset-dysonshell/node-auto')],
             }))
             .pipe(tBase())
+            .pipe(tRmFallbackPath())
             .pipe(dest('.tmp'))
             .on('data', function (file) {
                 console.log('- [', file.path, '] babel compiled');
+                m.stop(function() {
+                    m.start()
+                })
             });
 
         watch(wafiles)
@@ -675,32 +738,14 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] copied');
             });
 
-        var tmpAppRoot = path.join(APP_ROOT, '.tmp');
         respawn([process.execPath, require.resolve('../watchify/server.js')], {
             env: {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
+                NODE_CONFIG_DIR: path.join(tmpAppRoot, 'config'),
             },
             sleep: 0,
             stdio: 'inherit',
         }).start();
-        nodemon({
-            verbose: true,
-            script: path.join(tmpAppRoot, 'ccc'),
-            watch: [tmpAppRoot],
-            ignore: ['*/js/**/*.js'],
-            ext: 'js',
-            env: {
-                NODE_ENV: 'development',
-                NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
-            },
-        })
-            .on('crash', function () {
-                errorAlert(new Error('app process crashed'));
-            })
-            .on('quit', function () {
-                process.kill(process.pid, 'SIGTERM');
-            });
-
     });
 };
