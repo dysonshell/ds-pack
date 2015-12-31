@@ -28,7 +28,7 @@ var semver = require('semver');
 var _ = require('lodash');
 var VFile = require('vinyl');
 var Promise = require('bluebird');
-var dsWatchify = require('../watchify');
+var dsWatchify = require('./watchify');
 var respawn = require('respawn');
 var mkdirp = require('mkdirp');
 
@@ -738,7 +738,7 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] copied');
             });
 
-        respawn([process.execPath, require.resolve('../watchify/server.js')], {
+        respawn([process.execPath, require.resolve('./server.js')], {
             env: {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
