@@ -3,11 +3,11 @@
   "version": "1.1.0",
   "description": "DysonShell pack 工具(build for prod, watchify for dev)",
   "files": [
-    "build/index.js",
-    "build/precss.js",
-    "watchify/index.js",
-    "watchify/augment-app.js",
-    "watchify/server.js",
+    "build.js",
+    "precss.js",
+    "watchify.js",
+    "augment-app.js",
+    "server.js",
     "index.js"
   ],
   "main": "index.js",
