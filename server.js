@@ -14,6 +14,6 @@ if (!port) {
     console.log('env variables PORT required.');
     process.exit(1);
 }
-require('./index')(port).catch(function (err) {
+require('./watchify')(port).catch(function (err) {
     console.error(err.stack);
 });
