@@ -5,7 +5,6 @@ var assert = require('assert');
 var config = require('config');
 assert(config.dsAppRoot);
 var Readable = require('stream').Readable;
-var $ = require('gulp-load-plugins')();
 var bpack = require('browser-pack');
 var xtend = require('xtend');
 var through = require('through2');
