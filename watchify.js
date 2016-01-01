@@ -247,9 +247,10 @@ function alterPipeline(b, opts) {
         .transform(grtrequire)
         .transform(partialify)
         .transform(coffeeify, {bare: true})
-        .transform(babelify.configure({
+        .transform(babelify, {
             presets: [require('babel-preset-dysonshell')],
-        }), {global: true})
+            only: new RegExp('\\\/' + DSCns + '\\\/'),
+        })
     if (config.dsSupportIE8) {
         b.transform(es3ify, {global: true});
     }

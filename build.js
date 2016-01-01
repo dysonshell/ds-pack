@@ -445,7 +445,8 @@ module.exports = function (gulp, opts) {
                                 .transform(coffeeify, {bare: true})
                                 .transform(babelify.configure({
                                     presets: [require('babel-preset-dysonshell')],
-                                }), {global: true})
+                                    only: new RegExp('\\\/'+DSCns+'\\\/'),
+                                }))
                                 .transform(es3ify, {global: true});
                             b.transformPatched = true;
                         }
@@ -486,12 +487,28 @@ module.exports = function (gulp, opts) {
                 }))
                 .pipe(tReplaceTmp()),
             src([
-                './node_modules/@'+DSC+'*/js/**/*.js',
-                './'+DSC+'*/js/**/*.js',
-                '!**/js/main/**',
-                '!**/js/lib/**',
+                dot+'/'+DSC+'*/js/**/*.js',
+                '!'+dot+'/**/js/main/**',
+             ])
+                .pipe(through.obj(function (file, enc, done) {
+                    console.log('------' + file.path);
+                    this.push(file);
+                    done();
+                }))
+                .pipe(tJS())
+                .pipe(tReplaceTmp()),
+            src([
+                dot+'/'+DSC+'*/js/dist/**/*.js',
+                '!'+dot+'/**/js/main/**',
             ])
-                //.pipe(tReplaceDsc())
+                .pipe(through.obj(function (file, enc, done) {
+                    console.log('======' + file.path);
+                    this.push(file);
+                    done();
+                }))
+                .pipe(tBase())
+                .pipe(tRmFallbackPath())
+                .pipe(tReplaceTmp())
         )
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(tRev())
