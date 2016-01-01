@@ -39,6 +39,12 @@ var plumber = require('gulp-plumber');
 var notify = require('gulp-notify');
 var rimraf = require('rimraf');
 var coffee = require('gulp-coffee');
+var rev = require('gulp-rev');
+var file = require('gulp-file');
+var factorBundle = require('gulp-factor-bundle');
+var uglify = require('gulp-uglify');
+var nano = require('gulp-cssnano');
+var revOutdated = require('gulp-rev-outdated');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
@@ -76,6 +82,8 @@ var searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
     if (p.match(/[-\/]$/)) return p;
     return p.replace(/^\/+/, '') + '/';
 }).filter(Boolean);
+
+var dot = process.argv.indexOf('dev') > -1 ? 'dev' : 'tmp';
 
 module.exports = function (gulp, opts) {
 
@@ -115,7 +123,7 @@ module.exports = function (gulp, opts) {
     function tRev(prefix) {
         return streamCombine(
             tBase(prefix),
-            $.rev()
+            rev()
         );
     }
 
@@ -128,7 +136,7 @@ module.exports = function (gulp, opts) {
                 this.push(obj);
                 cb();
             }),
-            $.rev.manifest(fullRevPath, {
+            rev.manifest(fullRevPath, {
                 path: fullRevPath,
                 base: path.join(APP_ROOT, 'dist'),
                 cwd: APP_ROOT,
@@ -154,10 +162,10 @@ module.exports = function (gulp, opts) {
 
     function tReplaceTmp() {
         return through.obj(function (file, enc, done) {
-            file.base = file.base.replace('/.tmp/'+DSC, '/'+DSC);
-            file.path = file.path.replace('/.tmp/'+DSC, '/'+DSC);
-            file.base = file.base.replace('/.tmp/', '/');
-            file.path = file.path.replace('/.tmp/', '/');
+            file.base = file.base.replace('/'+dot+'/'+DSC, '/'+DSC);
+            file.path = file.path.replace('/'+dot+'/'+DSC, '/'+DSC);
+            file.base = file.base.replace('/'+dot+'/', '/');
+            file.path = file.path.replace('/'+dot+'/', '/');
             this.push(file);
             done();
         });
@@ -174,7 +182,7 @@ module.exports = function (gulp, opts) {
     };
 
     gulp.task('rimraf', function (cb) {
-        rimraf('./.tmp/', cb);
+        rimraf('./'+dot+'/', cb);
     });
 
     function tOrigPath() {
@@ -185,17 +193,17 @@ module.exports = function (gulp, opts) {
         });
     }
 
-    var afiles = ['!' + DSC + '.tmp/**/*']
+    var afiles = ['!' + DSC + dot+'/**/*']
         .concat([DSC].concat(searchPrefix).map(p => p + (p.match(/-$/) ? '*/**/*' : '**/*')))
         .reverse();
 
-    var wafiles = [DSC + '**/*', '!' + DSC + '.tmp/**/*'];
+    var wafiles = [DSC + '**/*', '!' + DSC + dot+'/**/*'];
 
     gulp.task('nothing', ()=>{});
     gulp.task('prepare-assets', ['rimraf'], function () {
         return src(afiles)
             .pipe(tOrigPath())
-            .pipe(dest('.tmp', DSC))
+            .pipe(dest(dot, DSC))
             .on('data', function (file) {
                 console.log('- [', file.path, ']',
                 '\n    copied from [', file.origPath, ']');
@@ -204,7 +212,7 @@ module.exports = function (gulp, opts) {
 
     var nfiles = filterJsFiles(globby.sync(_.flatten([
             [
-                '!' + path.join(DSC, '.tmp') + '/**/*.js',
+                '!' + path.join(DSC, dot) + '/**/*.js',
                 'config/**/*.js',
                 'config/**/*.coffee',
             ],
@@ -220,12 +228,12 @@ module.exports = function (gulp, opts) {
     var wncsfiles = [
         DSC + '**/*.coffee',
         '!' + DSC + '*/js/**/*.coffee',
-        '!' + DSC + '.tmp/**/*.coffee',
+        '!' + DSC + dot+'/**/*.coffee',
     ];
     var wnjsfiles = [
         DSC + '**/*.js',
         '!' + DSC + '*/js/**/*.js',
-        '!' + DSC + '.tmp/**/*.js',
+        '!' + DSC + dot+'/**/*.js',
     ];
 
     function filterJsFiles(files) {
@@ -280,7 +288,7 @@ module.exports = function (gulp, opts) {
             gulp.src(njsfiles, {cwd: APP_ROOT}).pipe(tJS()),
             src(wncsfiles).pipe(tCoffee()).pipe(tBase()),
             src(wnjsfiles).pipe(tJS()).pipe(tBase())])
-        .pipe(dest('.tmp'))
+        .pipe(dest(dot))
         .on('data', function (file) {
             console.log('- [', file.path, ']\n    compiled from [', file.origPath, ']');
         })
@@ -288,20 +296,20 @@ module.exports = function (gulp, opts) {
 
     gulp.task('prepare', ['prepare-njs', 'prepare-assets'], function () {
         return src(['ccc/**', '!ccc/**/*.js']).pipe(tBase())
-            .pipe(src('.tmp/**').pipe(tBase('.tmp')))
+            .pipe(src(dot+'/**').pipe(tBase(dot)))
             //.pipe(tReplaceTmp())
             .pipe(dest('dist'));
     })
 
     gulp.task('reset-rev-menifest', function () {
-        var stream = $.file('rev.json', '{}');
+        var stream = file('rev.json', '{}');
         var d = stream.pipe(dest('dist'));
         stream.end();
         return d;
     });
 
-    var globalLibsPath = path.join(APP_ROOT, '.tmp', DSC, 'libs.json');
-    var globalPreloadPath = path.join(APP_ROOT, '.tmp', DSC, 'preload.js');
+    var globalLibsPath = path.join(APP_ROOT, dot, DSC, 'libs.json');
+    var globalPreloadPath = path.join(APP_ROOT, dot, DSC, 'preload.js');
     var globalLibs, globalExternals;
     gulp.task('build-assets', ['reset-rev-menifest', 'prepare'], function () {
 
@@ -316,7 +324,7 @@ module.exports = function (gulp, opts) {
         if (!fs.existsSync(globalPreloadPath)) {
             fs.writeFileSync(globalPreloadPath, '', 'utf-8');
         }
-        return src('.tmp/'+DSC+'*/img/**')
+        return src(dot+'/'+DSC+'*/img/**')
             .pipe(tReplaceTmp())
             .pipe(tRev())
             .pipe(tDest());
@@ -324,9 +332,10 @@ module.exports = function (gulp, opts) {
 
     gulp.task('build-css', ['build-assets'], function () {
         require('./precss');
-        return src(['./.tmp/'+DSC+'*/css/**/*.css'])
+        return src(['./'+dot+'/'+DSC+'*/css/**/*.css'])
             .pipe(tReplaceTmp())
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
+            .pipe(nano())
             .pipe(tRev())
             .pipe(tDest('css'));
     });
@@ -361,8 +370,8 @@ module.exports = function (gulp, opts) {
         if (filepath.indexOf(APP_ROOT) === 0) {
             filepath = filepath.substring(APP_ROOT.length);
         }
-        if (filepath.indexOf('/.tmp/') === 0) {
-            filepath = filepath.replace(/^\/+(\.tmp\/)?/, '');
+        if (filepath.indexOf('/'+dot+'/') === 0) {
+            filepath = filepath.substring(4);
         }
         filepath = filepath.replace(/^(\/)?\.\.\/node_modules\//, '$1node_modules/');
         filepath = rmFallbackPath(filepath);
@@ -400,8 +409,8 @@ module.exports = function (gulp, opts) {
     gulp.task('build-js', ['build-global-js', 'build-css'], function () {
         var bcp = fs.readFileSync(require.resolve('browserify-common-prelude/dist/bcp.min.js'), 'utf-8');
         var files = glob.sync(DSC+'*/js/main/**/*.js', {
-            cwd: path.join(APP_ROOT, '.tmp'),
-        }).map(unary(path.join.bind(path, APP_ROOT, '.tmp')));
+            cwd: path.join(APP_ROOT, dot),
+        }).map(unary(path.join.bind(path, APP_ROOT, dot)));
         //var globalJsSrc = fs.readFileSync(require.resolve('@ds/common/dist/'+DSC+'global.js'), 'utf8');
         return es.merge(
             src(files)
@@ -410,12 +419,12 @@ module.exports = function (gulp, opts) {
                     this.push(file);
                     done();
                 }))
-                .pipe($.factorBundle({
+                .pipe(factorBundle({
                     b: (function() {
                         var b = new browserify({
                             extensions: ['.coffee'],
                             detectGlobals: true,
-                            basedir: path.join(APP_ROOT, '.tmp'),
+                            basedir: path.join(APP_ROOT, dot),
                             paths: ['.'],
                         });
                         b.external(globalExternals)
@@ -452,12 +461,12 @@ module.exports = function (gulp, opts) {
                                 prelude: bcp
                             })));
                     },
-                    basedir: path.join(APP_ROOT, '.tmp'),
+                    basedir: path.join(APP_ROOT, dot),
                     commonJsPath: DSC+'common.js' //"node_modules" will be removed
                 }))
                 //.pipe(tReplaceDsc())
                 .pipe(through.obj(function (file, enc, done) {
-                    if (file.path === path.join(APP_ROOT, '.tmp/'+DSC+'common.js')) {
+                    if (file.path === path.join(APP_ROOT, dot+'/'+DSC+'common.js')) {
                         this.push(new VFile({
                             cwd: file.cwd,
                             base: file.base,
@@ -490,7 +499,7 @@ module.exports = function (gulp, opts) {
                 this.push(file);
                 done();
             }))
-            .pipe($.uglify({
+            .pipe(uglify({
                 compress: {
                     //drop_console: true
                 },
@@ -504,9 +513,8 @@ module.exports = function (gulp, opts) {
 
     gulp.task('build-rev', ['build-js'], function () {
         var revMap = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json')));
-        return src(['.tmp/'+DSC+'*/partials/**/*.html', '.tmp/'+DSC+'*/views/**/*.html'])
-        // return src(['.tmp/'+DSC+'login/views/**/*.html'])
-            .pipe(tBase('.tmp'))
+        return src([dot+'/'+DSC+'*/partials/**/*.html', dot+'/'+DSC+'*/views/**/*.html'])
+            .pipe(tBase(dot))
             .pipe(through.obj(function (file, enc, cb) {
                 var contents = file.contents.toString();
                 console.log('- revving template: ', file.path);
@@ -535,7 +543,7 @@ module.exports = function (gulp, opts) {
 
     gulp.task('build-and-clean', ['build-rev'], function () {
         return src('./dist/**/*')
-            .pipe($.revOutdated(5))
+            .pipe(revOutdated(5))
             .pipe(vinylPaths(del));
     });
 
@@ -548,7 +556,7 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('dev', ['prepare'], function () {
-        var tmpAppRoot = path.join(APP_ROOT, '.tmp');
+        var tmpAppRoot = path.join(APP_ROOT, dot);
         var m = respawn([process.execPath, path.join(tmpAppRoot, 'ccc', 'index.js')], {
             cwd: tmpAppRoot,
             env: {
@@ -599,7 +607,7 @@ module.exports = function (gulp, opts) {
         }
         var nfiles = filterJsFiles(globby.sync(_.flatten([
                 [
-                    '!' + path.join(DSC, '.tmp') + '/**/*.js',
+                    '!' + path.join(DSC, dot) + '/**/*.js',
                 ],
                 searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
                     '!' + p + '*/js/**/*.js',
@@ -699,7 +707,7 @@ module.exports = function (gulp, opts) {
             .pipe(coffee({bare: true}))
             .pipe(tBase())
             .pipe(tRmFallbackPath())
-            .pipe(dest('.tmp'))
+            .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee compiled');
                 m.stop(function() {
@@ -718,7 +726,7 @@ module.exports = function (gulp, opts) {
             }))
             .pipe(tBase())
             .pipe(tRmFallbackPath())
-            .pipe(dest('.tmp'))
+            .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] babel compiled');
                 m.stop(function() {
@@ -733,7 +741,7 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] updated');
             })
             .pipe(tBase())
-            .pipe(dest('.tmp'))
+            .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] copied');
             });
