@@ -225,11 +225,13 @@ module.exports = function (gulp, opts) {
     var ncsfiles = nfiles.filter(p => p.match(/\.coffee$/));
     var njsfiles = nfiles.filter(p => p.match(/\.js$/));
     var wncsfiles = [
+        'config/**/*.coffee',
         DSC + '**/*.coffee',
         '!' + DSC + '*/js/**/*.coffee',
         '!' + DSC + dot+'/**/*.coffee',
     ];
     var wnjsfiles = [
+        'config/**/*.js',
         DSC + '**/*.js',
         '!' + DSC + '*/js/**/*.js',
         '!' + DSC + dot+'/**/*.js',
@@ -639,7 +641,7 @@ module.exports = function (gulp, opts) {
             });
         }
         var csupdate = through.obj();
-        var csupdated = csupdate.pipe(readFileThrough()).pipe(through.obj(function (file, enc, cb) {
+        var csupdated = csupdate.pipe(through.obj(function (file, enc, cb) {
             Promise.coroutine(function *() {
                 var jse = yield exists(file.path.replace(/\.coffee$/i, '.js'));
                 if (jse) {
@@ -678,7 +680,7 @@ module.exports = function (gulp, opts) {
             cb();
         });
         var jsupdate = through.obj();
-        var jsupdated = jsupdate.pipe(readFileThrough()).pipe(through.obj(function (file, enc, cb) {
+        var jsupdated = jsupdate.pipe(through.obj(function (file, enc, cb) {
             fs.exists(file.path, exists => {
                 if (exists) {
                     this.push(file);
@@ -702,6 +704,7 @@ module.exports = function (gulp, opts) {
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee updated');
             })
+            .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
             .pipe(coffee({bare: true}))
             .pipe(tBase())
@@ -719,6 +722,7 @@ module.exports = function (gulp, opts) {
             .on('data', function (file) {
                 console.log('- [', file.path, '] updated');
             })
+            .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell/node-auto')],
