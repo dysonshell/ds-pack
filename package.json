@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "anymatch": "^1",
-    "babel-connect": "^6",
+    "babel-connect": "git+https://github.com/babel/babel-connect.git#6827445ac8f75e6d6cc8365228927e62f58d7afd",
     "babel-preset-dysonshell": "^1.0.1",
     "babelify": "^7",
     "bluebird": "^3",
