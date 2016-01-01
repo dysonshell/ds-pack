@@ -3,7 +3,6 @@ var path = require('path');
 var fs = require('fs');
 var mkdirp = require('mkdirp');
 var mqRemove = require('mq-remove');
-require('ds-nrequire');
 var glob = require('glob');
 var assert = require('assert');
 var config = require('config');
@@ -63,10 +62,10 @@ var replaced = _.transform(allParsed, function (r, obj, fpath) {
             replaced[ipath] = 1;
             Array.prototype.splice.apply(parsed.rules, [i, 1, {
                 "type": "comment",
-                "comment": " importing '" + ipath + "' from '" + require.resolve(ipath.substring(1)) + "' ",
+                "comment": " importing '" + ipath + "'",
             }].concat(allParsed[ipath].parsed.stylesheet.rules).concat([{
                 "type": "comment",
-                "comment": " imported '" + ipath + " '",
+                "comment": " imported '" + ipath + "'",
             }]));
         }
         queue = queue.concat(parsed.rules.filter(function (rule) {

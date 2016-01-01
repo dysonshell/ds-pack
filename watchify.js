@@ -373,7 +373,7 @@ function getTmpSavePath(filePath) {
     return tmpSavePath;
 }
 
-var initRouter = Promise.coroutine(function *() {
+var initRouter = function () {
     var router = express.Router();
     var globalSrcPromise = bundle(false, {
         global: true,
@@ -383,23 +383,36 @@ var initRouter = Promise.coroutine(function *() {
                 b.require(x[0], {expose: x[1] || x[0]});
             });
         },
-    })
-    var globalSrc = (yield globalSrcPromise).toString();
+    });
+    var preloadSrcPromise = bundle(globalPreloadPath, {
+        watch: false,
+        preludeSync: true,
+    });
+    var commonSrc = '\n;' + bcp + '({});';
+    var watchAllPartials = bundle(false, {
+        watch: true,
+        alterb: function (b) {
+            glob.sync(DSC + '*/partials/**/*.html', {cwd: APP_ROOT}).forEach(function (partial) {
+                b.add(partial);
+            });
+        },
+    });
+    var src;
+    var allPromise = Promise.all([globalSrcPromise, preloadSrcPromise, watchAllPartials]);
+    allPromise.then(function (results) {
+        var globalSrc = results[0].toString();
+        var preloadSrc = results[1].toString();
+        src = {
+            global: (preloadSrc + ';' + globalSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
+            'global-common': (preloadSrc + ';' + globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + commonSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
+            common: commonSrc,
+        };
+    });
     router.use(function (req, res, next) {
-        globalSrcPromise.then(function () {
+        allPromise.then(function () {
             next();
         });
     });
-    var commonSrc = '\n;' + bcp + '({});';
-    var preloadSrc = (yield bundle(globalPreloadPath, {
-        watch: false,
-        preludeSync: true,
-    })).toString();
-    var src = {
-        global: (preloadSrc + ';' + globalSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
-        'global-common': (preloadSrc + ';' + globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + commonSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
-        common: commonSrc,
-    };
     var globalJsEtag = JSON.stringify(Date.now());
     router.get(new RegExp('^\\\/'+DSCns+'\\\/(global|global-common|common)\\.js'), function (req, res) {
         res.type('js');
@@ -449,18 +462,10 @@ var initRouter = Promise.coroutine(function *() {
     // router.use(express.static(path.join(APP_ROOT, 'node_modules')));
     router.use('/-', express.static(APP_ROOT));
     // watch all templates
-    yield bundle(false, {
-        watch: true,
-        alterb: function (b) {
-            glob.sync(DSC + '*/partials/**/*.html', {cwd: APP_ROOT}).forEach(function (partial) {
-                b.add(partial);
-            });
-        },
-    });
 
     console.log('watchify router inited');
     return router;
-});
+};
 
 var watchifyServer = Promise.coroutine(function *(port) {
     var watchifyApp = require('express')();
@@ -509,7 +514,7 @@ var watchifyServer = Promise.coroutine(function *(port) {
     })))
     watchifyApp.set('etag', false);
     watchifyApp.use(require('morgan')());
-    watchifyApp.use('/node_modules', yield initRouter());
+    watchifyApp.use('/node_modules', initRouter());
     yield Promise.promisify(server.listen, {context: server})(port + 500);
     var address = server.address();
     console.log("watchify listening at http://127.0.0.1:%d", address.port);
