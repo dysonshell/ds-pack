@@ -45,7 +45,6 @@
     "del": "^1.1.1",
     "dep-graph": "^1",
     "ds-rewriter": "^1",
-    "ds-watchify": "^2",
     "es3ify-safe": "^0.1.3",
     "event-stream": "^3.2.1",
     "eventemitter3": "^1",
