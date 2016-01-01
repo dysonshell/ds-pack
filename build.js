@@ -485,13 +485,42 @@ module.exports = function (gulp, opts) {
                     this.push(file);
                     done();
                 }))
-                .pipe(tReplaceTmp()),
+                .pipe(tReplaceTmp())
+                .pipe(through.obj(function (file, enc, done) {
+                    console.log('trying to uglify js file: ' + file.path);
+                    this.push(file);
+                    done();
+                }))
+                .pipe(uglify({
+                    compress: {
+                        //drop_console: true
+                    },
+                    output: {
+                        ascii_only: true,
+                        quote_keys: true
+                    }
+                })),
             src([
                 dot+'/'+DSC+'*/js/**/*.js',
+                '!'+dot+'/**/js/dist/**',
                 '!'+dot+'/**/js/main/**',
              ])
                 .pipe(tJS())
-                .pipe(tReplaceTmp()),
+                .pipe(tReplaceTmp())
+                .pipe(through.obj(function (file, enc, done) {
+                    console.log('trying to uglify js file: ' + file.path);
+                    this.push(file);
+                    done();
+                }))
+                .pipe(uglify({
+                    compress: {
+                        //drop_console: true
+                    },
+                    output: {
+                        ascii_only: true,
+                        quote_keys: true
+                    }
+                })),
             src([
                 dot+'/'+DSC+'*/js/dist/**/*.js',
                 '!'+dot+'/**/js/main/**',
@@ -502,20 +531,6 @@ module.exports = function (gulp, opts) {
         )
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(tRev())
-            .pipe(through.obj(function (file, enc, done) {
-                console.log('trying to uglify js file: ' + file.path);
-                this.push(file);
-                done();
-            }))
-            .pipe(uglify({
-                compress: {
-                    //drop_console: true
-                },
-                output: {
-                    ascii_only: true,
-                    quote_keys: true
-                }
-            }))
             .pipe(tDest('js', 'node_modules'));
     });
 
