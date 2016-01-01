@@ -490,22 +490,12 @@ module.exports = function (gulp, opts) {
                 dot+'/'+DSC+'*/js/**/*.js',
                 '!'+dot+'/**/js/main/**',
              ])
-                .pipe(through.obj(function (file, enc, done) {
-                    console.log('------' + file.path);
-                    this.push(file);
-                    done();
-                }))
                 .pipe(tJS())
                 .pipe(tReplaceTmp()),
             src([
                 dot+'/'+DSC+'*/js/dist/**/*.js',
                 '!'+dot+'/**/js/main/**',
             ])
-                .pipe(through.obj(function (file, enc, done) {
-                    console.log('======' + file.path);
-                    this.push(file);
-                    done();
-                }))
                 .pipe(tBase())
                 .pipe(tRmFallbackPath())
                 .pipe(tReplaceTmp())
