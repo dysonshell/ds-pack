@@ -271,11 +271,15 @@ module.exports = function (gulp, opts) {
         );
     }
 
-    function tJS() {
+    function tJS(browser) {
         return streamCombine(
             tOrigPath(),
             babel({
-                presets: [require('babel-preset-dysonshell/node-auto')],
+                presets: [
+                    browser
+                        ? require('babel-preset-dysonshell')
+                        : require('babel-preset-dysonshell/node-auto')
+                    ],
             }),
             tBase(),
             tRmFallbackPath()
@@ -505,7 +509,7 @@ module.exports = function (gulp, opts) {
                 '!'+dot+'/**/js/dist/**',
                 '!'+dot+'/**/js/main/**',
              ])
-                .pipe(tJS())
+                .pipe(tJS(true))
                 .pipe(tReplaceTmp())
                 .pipe(through.obj(function (file, enc, done) {
                     console.log('trying to uglify js file: ' + file.path);
