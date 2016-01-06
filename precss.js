@@ -4,10 +4,11 @@ var fs = require('fs');
 var mkdirp = require('mkdirp');
 var mqRemove = require('mq-remove');
 var glob = require('glob');
+var _ = require('lodash');
 var assert = require('assert');
 var config = require('config');
 assert(config.dsAppRoot);
-var _ = require('lodash');
+var mqWidth = config.dsMediaQueryRemoveWidth || '1200px';
 
 // config
 var APP_ROOT = config.dsAppRoot;
@@ -79,7 +80,8 @@ _.each(replaced, function (obj, fpath) {
     fs.writeFileSync(wpath, obj.contents, 'utf8');
     if (config.dsSupportIE8) {
         fs.writeFileSync(wpath.replace(/\.css$/, '.nmq.css'), mqRemove(obj.parsed, {
-            width: '1200px'
+            type: 'screen',
+            width: mqWidth,
         }), 'utf8');
     }
 });
