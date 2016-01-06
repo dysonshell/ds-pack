@@ -272,14 +272,12 @@ module.exports = function (gulp, opts) {
         console.log(ncsfiles);
         console.log(njsfiles);
         wncsfiles = [
-            'config/**/*.coffee',
-            DSC + '**/*.coffee',
+            '**/*.coffee',
             '!' + DSC + '*/js/**/*.coffee',
             '!' + DSC + dot+'/**/*.coffee',
         ];
         wnjsfiles = [
-            'config/**/*.js',
-            DSC + '**/*.js',
+            '**/*.js',
             '!' + DSC + '*/js/**/*.js',
             '!' + DSC + dot+'/**/*.js',
         ];
@@ -367,7 +365,7 @@ module.exports = function (gulp, opts) {
     //})
 
     gulp.task('prepare-build', ['prepare-njs', 'prepare-assets'], function () {
-        return tsrc(['index.js', 'config/**/*', 'ccc/**/*'])
+        return tsrc('**/*')
             .pipe(taBase())
             .pipe(tReplaceTmp())
             .pipe(dest('dist'));
