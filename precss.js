@@ -17,7 +17,7 @@ var DSCns = DSC.replace(/^\/+/, '').replace(/\/+$/, '');
 DSC = DSCns + '/';
 
 var css = require('css');
-var list = glob.sync('tmp/'+DSC+'*/css/**/*.css', {
+var list = glob.sync(DSC+'*/css/**/*.css', {
     cwd: APP_ROOT,
 });
 var allParsed = {};
@@ -75,7 +75,7 @@ var replaced = _.transform(allParsed, function (r, obj, fpath) {
     }
 });
 _.each(replaced, function (obj, fpath) {
-    var wpath = path.join(APP_ROOT, 'tmp', fpath);
+    var wpath = path.join(APP_ROOT, fpath);
     mkdirp.sync(path.dirname(wpath));
     fs.writeFileSync(wpath, obj.contents, 'utf8');
     if (config.dsSupportIE8) {
