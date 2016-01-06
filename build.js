@@ -1,22 +1,17 @@
 'use strict';
 var fs = require('fs');
 var path = require('path');
-var assert = require('assert');
-var config = require('config');
-assert(config.dsAppRoot);
 var Readable = require('stream').Readable;
 var bpack = require('browser-pack');
 var xtend = require('xtend');
 var through = require('through2');
 var es = require('event-stream');
 var streamCombine = require('stream-combiner');
-var dsRewriter = require('ds-rewriter');
 var glob = require('glob');
 var globby = require('globby');
 var del = require('del');
 var vinylPaths = require('vinyl-paths');
 var exec = require('child_process').exec;
-var mqRemove = require('mq-remove');
 var browserify = require('browserify');
 var partialify = require('partialify');
 var coffeeify = require('coffeeify');
@@ -27,7 +22,6 @@ var semver = require('semver');
 var _ = require('lodash');
 var VFile = require('vinyl');
 var Promise = require('bluebird');
-var dsWatchify = require('./watchify');
 var respawn = require('respawn');
 var mkdirp = require('mkdirp');
 
@@ -68,25 +62,15 @@ function ms(streams) {
     return outStream;
 }
 
-// config
-var APP_ROOT = config.dsAppRoot;
-var DSC = config.dsComponentPrefix || 'dsc';
-var DSCns = DSC.replace(/^\/+/, '').replace(/\/+$/, '');
-DSC = DSCns + '/';
-var port = parseInt(process.env.PORT, 10) || config.port || 4000;
-process.env.APP_ROOT = APP_ROOT;
-process.env.PORT = ''+port;
-var searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
-    if (typeof p !== 'string') return false;
-    if (p.match(/[-\/]$/)) return p;
-    return p.replace(/^\/+/, '') + '/';
-}).filter(Boolean);
-
-var dot = process.argv.indexOf('dev') > -1 ? 'dev' : 'tmp';
 
 module.exports = function (gulp, opts) {
 
-    var port = Number(process.env.PORT || opts.port);
+    // config
+    var APP_ROOT = path.resolve(__dirname, '..', '..').replace(/node_modules[\\\/]dysonshell$/, '');
+    var dot = process.argv.indexOf('dev') > -1 ? 'dev' : 'tmp';
+    var SRC_ROOT = path.join(APP_ROOT, 'src');
+    var DOT_ROOT = path.join(APP_ROOT, dot);
+    var config, port, dsRewriter, searchPrefix, DSC, DSCns;
 
     function rewrite(revMap) {
         return through.obj(function (obj, enc, cb) {
@@ -99,7 +83,25 @@ module.exports = function (gulp, opts) {
     function src(glob, opts) {
         opts = opts || {};
         var xopts = {
-            cwd: APP_ROOT,
+            cwd: SRC_ROOT,
+        };
+        opts = xtend(xopts, opts);
+        return gulp.src.call(gulp, glob, opts);
+    }
+
+    function tsrc(glob, opts) {
+        opts = opts || {};
+        var xopts = {
+            cwd: DOT_ROOT,
+        };
+        opts = xtend(xopts, opts);
+        return gulp.src.call(gulp, glob, opts);
+    }
+
+    function asrc(glob, opts) {
+        opts = opts || {};
+        var xopts = {
+            cwd: DOT_ROOT,
         };
         opts = xtend(xopts, opts);
         return gulp.src.call(gulp, glob, opts);
@@ -113,7 +115,19 @@ module.exports = function (gulp, opts) {
 
     function tBase(prefix) {
         return through.obj(function (obj, enc, cb) {
+            obj.base = prefix ? path.join(SRC_ROOT, prefix) : SRC_ROOT;
+            console.log('2base', obj.base);
+            console.log('2path', obj.path);
+            this.push(obj);
+            cb();
+        });
+    }
+
+    function taBase(prefix) {
+        return through.obj(function (obj, enc, cb) {
             obj.base = prefix ? path.join(APP_ROOT, prefix) : APP_ROOT;
+            console.log('3base', obj.base);
+            console.log('3path', obj.path);
             this.push(obj);
             cb();
         });
@@ -121,7 +135,13 @@ module.exports = function (gulp, opts) {
 
     function tRev(prefix) {
         return streamCombine(
-            tBase(prefix),
+            through.obj(function (obj, enc, cb) {
+                console.log('4base', obj.base);
+                console.log('4path', obj.path);
+                this.push(obj);
+                cb();
+            }),
+            taBase(prefix),
             rev()
         );
     }
@@ -132,13 +152,15 @@ module.exports = function (gulp, opts) {
             dest('dist'), // write revisioned assets to /dist
             through.obj(function (obj, enc, cb) {
                 console.log(obj.path);
+                console.log('1base', obj.base);
+                console.log('1path', obj.path);
                 this.push(obj);
                 cb();
             }),
             rev.manifest(fullRevPath, {
                 path: fullRevPath,
                 base: path.join(APP_ROOT, 'dist'),
-                cwd: APP_ROOT,
+                cwd: DOT_ROOT,
                 merge: true
             }), // generate a revision manifest file
             through.obj(function (obj, enc, cb) {
@@ -161,10 +183,14 @@ module.exports = function (gulp, opts) {
 
     function tReplaceTmp() {
         return through.obj(function (file, enc, done) {
+            console.log('5base', file.base);
+            console.log('5path', file.path);
             file.base = file.base.replace('/'+dot+'/'+DSC, '/'+DSC);
             file.path = file.path.replace('/'+dot+'/'+DSC, '/'+DSC);
-            file.base = file.base.replace('/'+dot+'/', '/');
-            file.path = file.path.replace('/'+dot+'/', '/');
+            file.base = file.base.replace('/'+dot, '/');
+            file.path = file.path.replace('/'+dot, '/');
+            console.log('5base', file.base);
+            console.log('5path', file.path);
             this.push(file);
             done();
         });
@@ -192,15 +218,74 @@ module.exports = function (gulp, opts) {
         });
     }
 
-    var afiles = ['!' + DSC + dot+'/**/*']
-        .concat([DSC].concat(searchPrefix).map(p => p + (p.match(/-$/) ? '*/**/*' : '**/*')))
-        .reverse();
-
-    var wafiles = [DSC + '**/*', '!' + DSC + dot+'/**/*'];
+    gulp.task('config', ['rimraf'], function () {
+        return ms([
+            src('config/**/*.coffee').pipe(tCoffee()),
+            src('config/**/*.js').pipe(tJS())
+        ])
+            .on('data', function (file) {
+                console.log('path', file.path);
+                console.log('base', file.base);
+            })
+            .pipe(dest(dot))
+            .on('data', function (file) {
+                console.log('- [', file.path, ']\n    compiled from [', file.origPath, ']');
+            })
+    });
 
     gulp.task('nothing', ()=>{});
-    gulp.task('prepare-assets', ['rimraf'], function () {
-        return src(afiles)
+
+    var afiles, wafiles, nfiles, ncsfiles, njsfiles, wncsfiles, wnjsfiles;
+    gulp.task('prepare-assets', ['config'], function () {
+        process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
+        config = require('config');
+        console.log(JSON.stringify(config, null, '    '));
+        DSCns = (config.dsComponentPrefix || 'dsc').replace(/^\/+/, '').replace(/\/+$/, '');
+        DSC = DSCns + '/';
+        port = parseInt(process.env.PORT, 10) || config.port || 4000;
+        process.env.PORT = ''+port;
+        dsRewriter = require('ds-rewriter');
+        searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
+            if (typeof p !== 'string') return false;
+            if (p.match(/[-\/]$/)) return p;
+            return p.replace(/^\/+/, '') + '/';
+        }).filter(Boolean);
+
+        afiles = ['!' + DSC + '.tmp/**/*']
+            .concat(['src/'+DSC].concat(searchPrefix).map(p => p + (p.match(/-$/) ? '*/**/*' : '**/*')))
+            .reverse();
+
+        wafiles = ['src/**/*', '!src/' + DSC + '.tmp/**/*'];
+
+        nfiles = filterJsFiles(globby.sync(_.flatten([
+                searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
+                    '!' + p + '*/js/**/*.js',
+                    '' + p + '**/*.js',
+                    '!' + p + '*/js/**/*.coffee',
+                    '' + p + '**/*.coffee',
+                ]))], true).reverse(), {cwd: APP_ROOT}));
+
+        ncsfiles = nfiles.filter(p => p.match(/\.coffee$/));
+        njsfiles = nfiles.filter(p => p.match(/\.js$/));
+        console.log(nfiles);
+        console.log(ncsfiles);
+        console.log(njsfiles);
+        wncsfiles = [
+            'config/**/*.coffee',
+            DSC + '**/*.coffee',
+            '!' + DSC + '*/js/**/*.coffee',
+            '!' + DSC + dot+'/**/*.coffee',
+        ];
+        wnjsfiles = [
+            'config/**/*.js',
+            DSC + '**/*.js',
+            '!' + DSC + '*/js/**/*.js',
+            '!' + DSC + dot+'/**/*.js',
+        ];
+        
+        console.log(afiles);
+
+        return gulp.src(afiles, {cwd: APP_ROOT})
             .pipe(tOrigPath())
             .pipe(dest(dot, DSC))
             .on('data', function (file) {
@@ -208,34 +293,6 @@ module.exports = function (gulp, opts) {
                 '\n    copied from [', file.origPath, ']');
             })
     });
-
-    var nfiles = filterJsFiles(globby.sync(_.flatten([
-            [
-                '!' + path.join(DSC, dot) + '/**/*.js',
-                'config/**/*.js',
-                'config/**/*.coffee',
-            ],
-            searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
-                '!' + p + '*/js/**/*.js',
-                '' + p + '**/*.js',
-                '!' + p + '*/js/**/*.coffee',
-                '' + p + '**/*.coffee',
-            ]))], true).reverse(), {cwd: APP_ROOT}));
-
-    var ncsfiles = nfiles.filter(p => p.match(/\.coffee$/));
-    var njsfiles = nfiles.filter(p => p.match(/\.js$/));
-    var wncsfiles = [
-        'config/**/*.coffee',
-        DSC + '**/*.coffee',
-        '!' + DSC + '*/js/**/*.coffee',
-        '!' + DSC + dot+'/**/*.coffee',
-    ];
-    var wnjsfiles = [
-        'config/**/*.js',
-        DSC + '**/*.js',
-        '!' + DSC + '*/js/**/*.js',
-        '!' + DSC + dot+'/**/*.js',
-    ];
 
     function filterJsFiles(files) {
         var coffeeReg = /\.coffee$/i;
@@ -250,9 +307,9 @@ module.exports = function (gulp, opts) {
 
     function tRmFallbackPath() {
         return through.obj(function (file, enc, cb) {
-            var firstMatch = searchPrefix.filter(sp =>
-                    file.path.indexOf(sp) > -1)[0];
-            if (!firstMatch) {
+            var firstMatch;
+            if (!searchPrefix || !searchPrefix.length ||
+                    !(firstMatch = searchPrefix.filter(sp => file.path.indexOf(sp) > -1)[0])) {
                 this.push(file);
                 cb();
                 return;
@@ -299,12 +356,21 @@ module.exports = function (gulp, opts) {
         })
     });
 
-    gulp.task('prepare', ['prepare-njs', 'prepare-assets'], function () {
-        return src(['ccc/**', '!ccc/**/*.js']).pipe(tBase())
-            .pipe(src(dot+'/**').pipe(tBase(dot)))
-            //.pipe(tReplaceTmp())
+    gulp.task('prepare', ['prepare-njs', 'prepare-assets'])//, function () {
+        //return ms([
+            //src(['ccc/**', '!ccc/**/*.js']).pipe(tBase()),
+            //src(dot+'/**').pipe(tBase(dot))
+        //])
+            ////.pipe(tReplaceTmp())
+            //.pipe(dest('dist'));
+    //})
+
+    gulp.task('prepare-build', ['prepare-njs', 'prepare-assets'], function () {
+        return tsrc(['index.js', 'config/**/*', 'ccc/**/*'])
+            .pipe(taBase())
+            .pipe(tReplaceTmp())
             .pipe(dest('dist'));
-    })
+    });
 
     gulp.task('reset-rev-menifest', function () {
         var stream = file('rev.json', '{}');
@@ -313,10 +379,12 @@ module.exports = function (gulp, opts) {
         return d;
     });
 
-    var globalLibsPath = path.join(APP_ROOT, dot, DSC, 'libs.json');
-    var globalPreloadPath = path.join(APP_ROOT, dot, DSC, 'preload.js');
-    var globalLibs, globalExternals;
-    gulp.task('build-assets', ['reset-rev-menifest', 'prepare'], function () {
+    var globalLibs, globalExternals, globalLibsPath, globalPreloadPath;
+
+    gulp.task('build-assets', ['reset-rev-menifest', 'prepare-build'], function () {
+
+        globalLibsPath = path.join(DOT_ROOT, DSC, 'libs.json');
+        globalPreloadPath = path.join(DOT_ROOT, DSC, 'preload.js');
 
         if (!fs.existsSync(globalLibsPath)) {
             fs.writeFileSync(globalLibsPath, '[]', 'utf-8');
@@ -329,7 +397,7 @@ module.exports = function (gulp, opts) {
         if (!fs.existsSync(globalPreloadPath)) {
             fs.writeFileSync(globalPreloadPath, '', 'utf-8');
         }
-        return src(dot+'/'+DSC+'*/img/**')
+        return tsrc(DSC+'*/img/**')
             .pipe(tReplaceTmp())
             .pipe(tRev())
             .pipe(tDest());
@@ -337,12 +405,12 @@ module.exports = function (gulp, opts) {
 
     gulp.task('build-css', ['build-assets'], function () {
         require('./precss');
-        return src(['./'+dot+'/'+DSC+'*/css/**/*.css'])
+        return tsrc([DSC+'*/css/**/*.css'])
             .pipe(tReplaceTmp())
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(nano())
             .pipe(tRev())
-            .pipe(tDest('css'));
+            .pipe(tDest());
     });
 
     function removeExternalDeps() {
@@ -384,7 +452,7 @@ module.exports = function (gulp, opts) {
     }
 
     function rmFallbackPath(filepath) {
-        var firstMatch = searchPrefix.filter(sp =>
+        var firstMatch = ['src/'+DSC].concat(searchPrefix).filter(sp =>
                 filepath.indexOf(sp) === 0)[0];
         if (!firstMatch) {
             return filepath;
@@ -394,6 +462,7 @@ module.exports = function (gulp, opts) {
 
     var globalSrc;
     gulp.task('build-global-js', ['build-assets'], function () {
+        var dsWatchify = require('./watchify');
         return Promise.coroutine(function *() {
             globalSrc =
             (yield dsWatchify.bundle(globalPreloadPath, {
@@ -414,8 +483,8 @@ module.exports = function (gulp, opts) {
     gulp.task('build-js', ['build-global-js', 'build-css'], function () {
         var bcp = fs.readFileSync(require.resolve('browserify-common-prelude/dist/bcp.min.js'), 'utf-8');
         var files = glob.sync(DSC+'*/js/main/**/*.js', {
-            cwd: path.join(APP_ROOT, dot),
-        }).map(unary(path.join.bind(path, APP_ROOT, dot)));
+            cwd: DOT_ROOT,
+        }).map(unary(path.join.bind(path, DOT_ROOT)));
         //var globalJsSrc = fs.readFileSync(require.resolve('@ds/common/dist/'+DSC+'global.js'), 'utf8');
         return es.merge(
             src(files)
@@ -427,9 +496,8 @@ module.exports = function (gulp, opts) {
                 .pipe(factorBundle({
                     b: (function() {
                         var b = new browserify({
-                            extensions: ['.coffee'],
                             detectGlobals: true,
-                            basedir: path.join(APP_ROOT, dot),
+                            basedir: DOT_ROOT,
                             paths: ['.'],
                         });
                         b.external(globalExternals)
@@ -467,12 +535,12 @@ module.exports = function (gulp, opts) {
                                 prelude: bcp
                             })));
                     },
-                    basedir: path.join(APP_ROOT, dot),
+                    basedir: DOT_ROOT,
                     commonJsPath: DSC+'common.js' //"node_modules" will be removed
                 }))
                 //.pipe(tReplaceDsc())
                 .pipe(through.obj(function (file, enc, done) {
-                    if (file.path === path.join(APP_ROOT, dot+'/'+DSC+'common.js')) {
+                    if (file.path === path.join(DOT_ROOT, DSC, 'common.js')) {
                         this.push(new VFile({
                             cwd: file.cwd,
                             base: file.base,
@@ -504,10 +572,10 @@ module.exports = function (gulp, opts) {
                         quote_keys: true
                     }
                 })),
-            src([
-                dot+'/'+DSC+'*/js/**/*.js',
-                '!'+dot+'/**/js/dist/**',
-                '!'+dot+'/**/js/main/**',
+             tsrc([
+                DSC+'*/js/**/*.js',
+                '!'+'/**/js/dist/**',
+                '!'+'/**/js/main/**',
              ])
                 .pipe(tJS(true))
                 .pipe(tReplaceTmp())
@@ -525,23 +593,23 @@ module.exports = function (gulp, opts) {
                         quote_keys: true
                     }
                 })),
-            src([
-                dot+'/'+DSC+'*/js/dist/**/*.js',
-                '!'+dot+'/**/js/main/**',
+            tsrc([
+                DSC+'*/js/dist/**/*.js',
+                '!'+'/**/js/main/**',
             ])
-                .pipe(tBase())
+                .pipe(taBase(dot))
                 .pipe(tRmFallbackPath())
                 .pipe(tReplaceTmp())
         )
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(tRev())
-            .pipe(tDest('js', 'node_modules'));
+            .pipe(tDest());
     });
 
     gulp.task('build-rev', ['build-js'], function () {
         var revMap = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json')));
-        return src([dot+'/'+DSC+'*/partials/**/*.html', dot+'/'+DSC+'*/views/**/*.html'])
-            .pipe(tBase(dot))
+        return tsrc([DSC+'*/partials/**/*.html', DSC+'*/views/**/*.html'])
+            .pipe(taBase(dot))
             .pipe(through.obj(function (file, enc, cb) {
                 var contents = file.contents.toString();
                 console.log('- revving template: ', file.path);
@@ -569,7 +637,7 @@ module.exports = function (gulp, opts) {
     });
 
     gulp.task('build-and-clean', ['build-rev'], function () {
-        return src('./dist/**/*')
+        return tsrc('./dist/**/*')
             .pipe(revOutdated(5))
             .pipe(vinylPaths(del));
     });
@@ -583,13 +651,12 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('dev', ['prepare'], function () {
-        var tmpAppRoot = path.join(APP_ROOT, dot);
-        var m = respawn([process.execPath, path.join(tmpAppRoot, 'ccc', 'index.js')], {
-            cwd: tmpAppRoot,
+        var m = respawn([process.execPath, path.join(DOT_ROOT, 'ccc', 'index.js')], {
+            cwd: DOT_ROOT,
             env: {
                 NODE_ENV: 'development',
-                NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
-                NODE_CONFIG_DIR: path.join(tmpAppRoot, 'config'),
+                NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
+                NODE_CONFIG_DIR: path.join(DOT_ROOT, 'config'),
             },
             maxRestarts: 0,
             sleep: 0,
@@ -608,19 +675,19 @@ module.exports = function (gulp, opts) {
         });
 
         function getAvailableFallbackFile(filePath) {
-            var relativeFilePathWithoutExt = path.relative(path.join(APP_ROOT, DSCns), filePath.replace(/\..+?$/, ''));
+            var relativeFilePathWithoutExt = path.relative(path.join(SRC_ROOT, DSCns), filePath.replace(/\..+?$/, ''));
             var paths = _([DSC].concat(searchPrefix))
                 .map(function (dir) {
                     return [
-                        path.join(APP_ROOT, dir, relativeFilePathWithoutExt + '.js'),
-                        path.join(APP_ROOT, dir, relativeFilePathWithoutExt + '.coffee'),
+                        path.join(SRC_ROOT, dir, relativeFilePathWithoutExt + '.js'),
+                        path.join(SRC_ROOT, dir, relativeFilePathWithoutExt + '.coffee'),
                     ];
                 })
                 .flatten()
                 .value();
             paths.push(
-                path.join(APP_ROOT, DSC, 'index.js'),
-                path.join(APP_ROOT, DSC, 'index.coffee')
+                path.join(SRC_ROOT, DSC, 'index.js'),
+                path.join(SRC_ROOT, DSC, 'index.coffee')
             );
             return new Promise.coroutine(function* (resolve) {
                 var p;
@@ -632,16 +699,6 @@ module.exports = function (gulp, opts) {
                 return false;
             })();
         }
-        var nfiles = filterJsFiles(globby.sync(_.flatten([
-                [
-                    '!' + path.join(DSC, dot) + '/**/*.js',
-                ],
-                searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
-                    '!' + p + '*/js/**/*.js',
-                    '' + p + '**/*.js',
-                    '!' + p + '*/js/**/*.coffee',
-                    '' + p + '**/*.coffee',
-                ]))], true).reverse(), {cwd: APP_ROOT}));
         function readFileThrough() {
             return through.obj(function (file, enc, cb) {
                 if (!file.isNull()) {
@@ -681,7 +738,7 @@ module.exports = function (gulp, opts) {
                     cb();
                     return;
                 } else {
-                    fs.unlink(path.join(tmpAppRoot, path.relative(APP_ROOT, file.path.replace(/\.coffee$/i, '.js'))), (err) => {
+                    fs.unlink(path.join(DOT_ROOT, path.relative(SRC_ROOT, file.path.replace(/\.coffee$/i, '.js'))), (err) => {
                         console.error(err);
                         getAvailableFallbackFile(file.path).then(filePath => {
                             (filePath.match(/\.js$/) ? jsupdate : csupdate).push(new VFile({
@@ -711,7 +768,7 @@ module.exports = function (gulp, opts) {
                 if (exists) {
                     this.push(file);
                 } else {
-                    fs.unlink(path.join(tmpAppRoot, path.relative(APP_ROOT, file.path)), (err) => {
+                    fs.unlink(path.join(DOT_ROOT, path.relative(SRC_ROOT, file.path)), (err) => {
                         console.error(err);
                         getAvailableFallbackFile(file.path).then(filePath => {
                             (filePath.match(/\.js$/) ? jsupdate : csupdate).push(new VFile({
@@ -725,7 +782,7 @@ module.exports = function (gulp, opts) {
                 cb();
             });
         }));
-        watch(wncsfiles)
+        watch(wncsfiles, {cwd: SRC_ROOT})
             .pipe(csupdated)
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee updated');
@@ -743,7 +800,7 @@ module.exports = function (gulp, opts) {
                 })
             });
 
-        watch(wnjsfiles)
+        watch(wnjsfiles, {cwd: SRC_ROOT})
             .pipe(jsupdated)
             .on('data', function (file) {
                 console.log('- [', file.path, '] updated');
@@ -763,7 +820,7 @@ module.exports = function (gulp, opts) {
                 })
             });
 
-        watch(wafiles)
+        watch(wafiles, {cwd: APP_ROOT})
             //.pipe(watch(wbjsfiles))
             .pipe(aupdated)
             .on('data', function (file) {
@@ -778,8 +835,8 @@ module.exports = function (gulp, opts) {
         respawn([process.execPath, require.resolve('./server.js')], {
             env: {
                 NODE_ENV: 'development',
-                NODE_CONFIG: '{"dsAppRoot":"'+tmpAppRoot+'"}',
-                NODE_CONFIG_DIR: path.join(tmpAppRoot, 'config'),
+                NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
+                NODE_CONFIG_DIR: path.join(DOT_ROOT, 'config'),
             },
             sleep: 0,
             stdio: 'inherit',
