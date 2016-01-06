@@ -239,6 +239,7 @@ module.exports = function (gulp, opts) {
     gulp.task('prepare-assets', ['config'], function () {
         process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
         config = require('config');
+        config.dsAppRoot = DOT_ROOT;
         console.log(JSON.stringify(config, null, '    '));
         DSCns = (config.dsComponentPrefix || 'dsc').replace(/^\/+/, '').replace(/\/+$/, '');
         DSC = DSCns + '/';
