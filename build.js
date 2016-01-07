@@ -83,24 +83,6 @@ module.exports = function (gulp, opts) {
     function src(glob, opts) {
         opts = opts || {};
         var xopts = {
-            cwd: SRC_ROOT,
-        };
-        opts = xtend(xopts, opts);
-        return gulp.src.call(gulp, glob, opts);
-    }
-
-    function tsrc(glob, opts) {
-        opts = opts || {};
-        var xopts = {
-            cwd: DOT_ROOT,
-        };
-        opts = xtend(xopts, opts);
-        return gulp.src.call(gulp, glob, opts);
-    }
-
-    function asrc(glob, opts) {
-        opts = opts || {};
-        var xopts = {
             cwd: DOT_ROOT,
         };
         opts = xtend(xopts, opts);
@@ -108,27 +90,15 @@ module.exports = function (gulp, opts) {
     }
 
     function dest() {
-        var destPath = path.join.apply(path, [APP_ROOT].concat([].slice.call(
-            arguments)));
+        var destPath = path.join.apply(path, [APP_ROOT].concat([].slice.call(arguments)));
         return gulp.dest(destPath);
     }
 
     function tBase(prefix) {
-        return through.obj(function (obj, enc, cb) {
-            obj.base = prefix ? path.join(SRC_ROOT, prefix) : SRC_ROOT;
-            console.log('2base', obj.base);
-            console.log('2path', obj.path);
-            this.push(obj);
-            cb();
-        });
-    }
-
-    function taBase(prefix) {
-        return through.obj(function (obj, enc, cb) {
-            obj.base = prefix ? path.join(APP_ROOT, prefix) : APP_ROOT;
-            console.log('3base', obj.base);
-            console.log('3path', obj.path);
-            this.push(obj);
+        var args = [].slice.call(arguments).filter(Boolean);
+        return through.obj(function (file, enc, cb) {
+            file.base = path.join.apply(path, [APP_ROOT].concat(args));
+            this.push(file);
             cb();
         });
     }
@@ -141,7 +111,7 @@ module.exports = function (gulp, opts) {
                 this.push(obj);
                 cb();
             }),
-            taBase(prefix),
+            tBase(prefix),
             rev()
         );
     }
@@ -218,91 +188,96 @@ module.exports = function (gulp, opts) {
         });
     }
 
-    gulp.task('config', ['rimraf'], function () {
+    gulp.task('prepare-config', ['rimraf'], function () {
         return ms([
-            src('config/**/*.coffee').pipe(tCoffee()),
-            src('config/**/*.js').pipe(tJS())
+            gulp.src('config/**/*.coffee', {cwd: SRC_ROOT}).pipe(tCoffee()),
+            gulp.src('config/**/*.js', {cwd: SRC_ROOT}).pipe(tJS())
         ])
-            .on('data', function (file) {
-                console.log('path', file.path);
-                console.log('base', file.base);
-            })
+            .pipe(tBase('src'))
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, ']\n    compiled from [', file.origPath, ']');
             })
     });
 
-    gulp.task('nothing', ()=>{});
+    var afiles, njsfiles, bjsfiles, csfiles;
+    var files = {};
+    var wafiles = 'src/**/*';
+    var wnjsfiles = 'src/**/*.js';
+    var wncsfiles = 'src/**/*.coffee';
 
-    var afiles, wafiles, nfiles, ncsfiles, njsfiles, wncsfiles, wnjsfiles;
-    gulp.task('prepare-assets', ['config'], function () {
+    gulp.task('load-config', ['prepare-config'], function () {
         process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
         config = require('config');
         config.dsAppRoot = DOT_ROOT;
-        console.log(JSON.stringify(config, null, '    '));
+        console.log(JSON.stringify(_.pick(config, Object.keys(config).filter(k => k.match(/^ds/))), null, '    '));
         DSCns = (config.dsComponentPrefix || 'dsc').replace(/^\/+/, '').replace(/\/+$/, '');
         DSC = DSCns + '/';
         port = parseInt(process.env.PORT, 10) || config.port || 4000;
         process.env.PORT = ''+port;
         dsRewriter = require('ds-rewriter');
-        searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
+        searchPrefix = ['src/'+DSC].concat((config.dsComponentFallbackPrefix || []).map(p => {
             if (typeof p !== 'string') return false;
             if (p.match(/[-\/]$/)) return p;
             return p.replace(/^\/+/, '') + '/';
-        }).filter(Boolean);
+        })).filter(Boolean);
 
-        afiles = ['!' + DSC + '.tmp/**/*']
-            .concat(['src/'+DSC].concat(searchPrefix).map(p => p + (p.match(/-$/) ? '*/**/*' : '**/*')))
-            .reverse();
+        files.a = _.flatten([
+            searchPrefix.map(p => (p.match(/-$/) || p === 'src/'+DSC ? [] : ['!' + p + 'preload.js']).concat([
+                '' + p + '*/js/dist/**/*.js',
+                '!' + p + '*/js/**/*.js',
+                '' + p + '*/**/*',
+            ])),
+            'src/**/*',
+        ], true).reverse()
 
-        wafiles = ['src/**/*', '!src/' + DSC + '.tmp/**/*'];
+        files.njs = _.flatten([
+            searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
+                '!' + p + '*/node_modules/**/*.js',
+                '!' + p + '*/js/**/*.js',
+                '' + p + '**/*.js',
+            ]))
+        ], true).reverse()
 
-        nfiles = filterJsFiles(globby.sync(_.flatten([
-                searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
-                    '!' + p + '*/js/**/*.js',
-                    '' + p + '**/*.js',
-                    '!' + p + '*/js/**/*.coffee',
-                    '' + p + '**/*.coffee',
-                ]))], true).reverse(), {cwd: APP_ROOT}));
+        files.bjs = _.flatten([
+            'src/'+DSC+'preload.js',
+            searchPrefix.map(p => [
+                '' + p + '*/js/**/*.js',
+            ])
+        ], true).reverse()
 
-        ncsfiles = nfiles.filter(p => p.match(/\.coffee$/));
-        njsfiles = nfiles.filter(p => p.match(/\.js$/));
-        console.log(nfiles);
-        console.log(ncsfiles);
-        console.log(njsfiles);
-        wncsfiles = [
-            '**/*.coffee',
-            '!' + DSC + '*/js/**/*.coffee',
-            '!' + DSC + dot+'/**/*.coffee',
-        ];
-        wnjsfiles = [
-            '**/*.js',
-            '!' + DSC + '*/js/**/*.js',
-            '!' + DSC + dot+'/**/*.js',
-        ];
-        
-        console.log(afiles);
+        files.cs = _.flatten([
+            searchPrefix.map(p => [
+                '!' + p + '*/node_modules/**/*.coffee',
+                '' + p + '*/**/*.coffee',
+            ])
+        ], true).reverse()
 
-        return gulp.src(afiles, {cwd: APP_ROOT})
+        console.log(files);
+
+        files = _.mapValues(files, function (v) {
+            return globby.sync(v, {cwd: APP_ROOT});
+        });
+
+        console.log(files);
+
+        /*
+        console.log(afiles, njsfiles, bjsfiles, csfiles);
+        console.log([afiles, njsfiles, bjsfiles, csfiles].map(d => globby.sync(d, {cwd: APP_ROOT})));
+        */
+    });
+
+    gulp.task('prepare-assets', ['load-config'], function () {
+        return gulp.src(files.a)
             .pipe(tOrigPath())
-            .pipe(dest(dot, DSC))
+            .pipe(tBase())
+            .pipe(tRmFallbackPath())
+            .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, ']',
                 '\n    copied from [', file.origPath, ']');
             })
     });
-
-    function filterJsFiles(files) {
-        var coffeeReg = /\.coffee$/i;
-        return files.filter(function (item, i, all) {
-            if (item.match(coffeeReg) &&
-                    all.indexOf(item.replace(coffeeReg, '.js')) > -1) {
-                return false;
-            }
-            return true;
-        });
-    }
 
     function tRmFallbackPath() {
         return through.obj(function (file, enc, cb) {
@@ -321,8 +296,8 @@ module.exports = function (gulp, opts) {
     function tCoffee() {
         return streamCombine(
             tOrigPath(),
-            coffee({bare: true}),
             tBase(),
+            coffee({bare: true}),
             tRmFallbackPath()
         );
     }
@@ -330,6 +305,7 @@ module.exports = function (gulp, opts) {
     function tJS(browser) {
         return streamCombine(
             tOrigPath(),
+            tBase(),
             babel({
                 presets: [
                     browser
@@ -337,25 +313,24 @@ module.exports = function (gulp, opts) {
                         : require('babel-preset-dysonshell/node-auto')
                     ],
             }),
-            tBase(),
             tRmFallbackPath()
         );
     }
 
 
-    gulp.task('prepare-njs', ['prepare-assets'], function () {
+    gulp.task('prepare-js', ['prepare-assets'], function () {
         return ms([
-            gulp.src(ncsfiles, {cwd: APP_ROOT}).pipe(tCoffee()),
-            gulp.src(njsfiles, {cwd: APP_ROOT}).pipe(tJS()),
-            src(wncsfiles).pipe(tCoffee()).pipe(tBase()),
-            src(wnjsfiles).pipe(tJS()).pipe(tBase())])
-        .pipe(dest(dot))
-        .on('data', function (file) {
-            console.log('- [', file.path, ']\n    compiled from [', file.origPath, ']');
-        })
+            gulp.src(files.cs).pipe(tCoffee()),
+            gulp.src(files.njs).pipe(tJS()),
+            gulp.src(files.bjs).pipe(tJS(true)),
+        ])
+            .pipe(dest(dot))
+            .on('data', function (file) {
+                console.log('- [', file.path, ']\n    compiled from [', file.origPath, ']');
+            })
     });
 
-    gulp.task('prepare', ['prepare-njs', 'prepare-assets'])//, function () {
+    gulp.task('prepare', ['prepare-js', 'prepare-assets'])//, function () {
         //return ms([
             //src(['ccc/**', '!ccc/**/*.js']).pipe(tBase()),
             //src(dot+'/**').pipe(tBase(dot))
@@ -364,10 +339,10 @@ module.exports = function (gulp, opts) {
             //.pipe(dest('dist'));
     //})
 
-    gulp.task('prepare-build', ['prepare-njs', 'prepare-assets'], function () {
-        return tsrc('**/*')
-            .pipe(taBase())
-            .pipe(tReplaceTmp())
+    gulp.task('prepare-build', ['prepare-js', 'prepare-assets'], function () {
+        return gulp.src('**/*', {cwd: DOT_ROOT})
+            //.pipe(tReplaceTmp())
+            .pipe(tBase('tmp'))
             .pipe(dest('dist'));
     });
 
@@ -396,19 +371,22 @@ module.exports = function (gulp, opts) {
         if (!fs.existsSync(globalPreloadPath)) {
             fs.writeFileSync(globalPreloadPath, '', 'utf-8');
         }
-        return tsrc(DSC+'*/img/**')
-            .pipe(tReplaceTmp())
-            .pipe(tRev())
+
+        return src([DSC+'*/img/**', DSC+'*/js/dist/**/*.js'])
+            //.pipe(tReplaceTmp())
+            .pipe(tRev('tmp'))
             .pipe(tDest());
+
     });
 
     gulp.task('build-css', ['build-assets'], function () {
         require('./precss');
-        return tsrc([DSC+'*/css/**/*.css'])
-            .pipe(tReplaceTmp())
+        return src([DSC+'*/css/**/*.css'])
+            //.pipe(tReplaceTmp())
+            .pipe(tBase('tmp'))
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(nano())
-            .pipe(tRev())
+            .pipe(tRev('tmp'))
             .pipe(tDest());
     });
 
@@ -442,7 +420,10 @@ module.exports = function (gulp, opts) {
         if (filepath.indexOf(APP_ROOT) === 0) {
             filepath = filepath.substring(APP_ROOT.length);
         }
-        if (filepath.indexOf('/'+dot+'/') === 0) {
+        if (filepath.indexOf('/src/') === 0 ||
+            filepath.indexOf('/dev/') === 0 ||
+            filepath.indexOf('/tmp/') === 0
+        ) {
             filepath = filepath.substring(4);
         }
         filepath = filepath.replace(/^(\/)?\.\.\/node_modules\//, '$1node_modules/');
@@ -479,136 +460,141 @@ module.exports = function (gulp, opts) {
             })).toString();
         })();
     });
-    gulp.task('build-js', ['build-global-js', 'build-css'], function () {
+    gulp.task('build-nonmain-js', ['build-global-js', 'build-css'], function () {
         var bcp = fs.readFileSync(require.resolve('browserify-common-prelude/dist/bcp.min.js'), 'utf-8');
         var files = glob.sync(DSC+'*/js/main/**/*.js', {
             cwd: DOT_ROOT,
         }).map(unary(path.join.bind(path, DOT_ROOT)));
         //var globalJsSrc = fs.readFileSync(require.resolve('@ds/common/dist/'+DSC+'global.js'), 'utf8');
-        return es.merge(
-            src(files)
-                .pipe(through.obj(function (file, enc, done) {
-                    console.log('trying to browserify js file: ' + file.path);
-                    this.push(file);
-                    done();
-                }))
-                .pipe(factorBundle({
-                    b: (function() {
-                        var b = new browserify({
-                            detectGlobals: true,
-                            basedir: DOT_ROOT,
-                            paths: ['.'],
-                        });
-                        b.external(globalExternals)
-                        b.pipeline.get('deps').splice(1, 0, removeExternalDeps());
-                        b.on('reset', function () {
-                            this.external(globalExternals)
-                            this.pipeline.get('deps').splice(1, 0, removeExternalDeps());
-                            this.pipeline.get('dedupe').splice(0, 1);
-                        });
-                        return b;
-                    }()),
-                    alterPipeline: function alterPipeline(pipeline, b) {
-                        if (!b.transformPatched) {
-                            b
-                                .transform(grtrequire, {global: true})
-                                .transform(partialify, {global: true})
-                                .transform(coffeeify, {bare: true})
-                                .transform(babelify.configure({
-                                    presets: [require('babel-preset-dysonshell')],
-                                    only: new RegExp('\\\/'+DSCns+'\\\/'),
-                                }))
-                                .transform(es3ify, {global: true});
-                            b.transformPatched = true;
-                        }
-                        pipeline.get('pack')
-                            .splice(0, 1,
-                            through.obj(function (row, enc, cb) {
-                                row = removeRowPrefix(row);
-                                this.push(row);
-                                cb();
-                            }),
-                            bpack(xtend(b._options, {
-                                raw: true,
-                                hasExports: false,
-                                prelude: bcp
-                            })));
-                    },
-                    basedir: DOT_ROOT,
-                    commonJsPath: DSC+'common.js' //"node_modules" will be removed
-                }))
-                //.pipe(tReplaceDsc())
-                .pipe(through.obj(function (file, enc, done) {
-                    if (file.path === path.join(DOT_ROOT, DSC, 'common.js')) {
-                        this.push(new VFile({
-                            cwd: file.cwd,
-                            base: file.base,
-                            path: file.path.replace(/common\.js$/, 'global.js'),
-                            contents: new Buffer(globalSrc, 'utf-8'),
-                        }));
-                        this.push(new VFile({
-                            cwd: file.cwd,
-                            base: file.base,
-                            path: file.path.replace(/common\.js$/, 'global-common.js'),
-                            contents: new Buffer(globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + file.contents.toString(), 'utf-8'),
-                        }));
+        return src([
+            DSC+'*/js/**/*.js',
+            '!'+'/**/js/dist/**',
+            '!'+'/**/js/main/**',
+        ])
+            .pipe(through.obj(function (file, enc, done) {
+                console.log('trying to uglify js file: ' + file.path, 'base:', file.base);
+                this.push(file);
+                done();
+            }))
+            .pipe(uglify({
+                compress: {
+                    //drop_console: true
+                },
+                output: {
+                    ascii_only: true,
+                    quote_keys: true
+                }
+            }))
+            .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
+            .pipe(tRev(dot))
+            .pipe(tDest());
+    });
+    gulp.task('build-main-js', ['build-nonmain-js'], function () {
+        var bcp = fs.readFileSync(require.resolve('browserify-common-prelude/dist/bcp.min.js'), 'utf-8');
+        var files = glob.sync(DSC+'*/js/main/**/*.js', {
+            cwd: DOT_ROOT,
+        }).map(unary(path.join.bind(path, DOT_ROOT)));
+        //var globalJsSrc = fs.readFileSync(require.resolve('@ds/common/dist/'+DSC+'global.js'), 'utf8');
+        return src(files)
+            .pipe(through.obj(function (file, enc, done) {
+                console.log('trying to browserify js file: ' + file.path);
+                this.push(file);
+                done();
+            }))
+            .pipe(factorBundle({
+                b: (function() {
+                    var b = new browserify({
+                        detectGlobals: true,
+                        basedir: DOT_ROOT,
+                        paths: ['.'],
+                    });
+                    b.external(globalExternals)
+                    b.pipeline.get('deps').splice(1, 0, removeExternalDeps());
+                    b.on('reset', function () {
+                        this.external(globalExternals)
+                        this.pipeline.get('deps').splice(1, 0, removeExternalDeps());
+                        this.pipeline.get('dedupe').splice(0, 1);
+                    });
+                    return b;
+                }()),
+                alterPipeline: function alterPipeline(pipeline, b) {
+                    if (!b.transformPatched) {
+                        b
+                            .transform(grtrequire, {global: true})
+                            .transform(partialify, {global: true})
+                            //.transform(coffeeify, {bare: true})
+                            //.transform(babelify.configure({
+                                //presets: [require('babel-preset-dysonshell')],
+                                //only: new RegExp('\\\/'+DSCns+'\\\/'),
+                            //}))
+                            .transform(es3ify, {global: true});
+                        b.transformPatched = true;
                     }
-                    this.push(file);
-                    done();
-                }))
-                .pipe(tReplaceTmp())
-                .pipe(through.obj(function (file, enc, done) {
-                    console.log('trying to uglify js file: ' + file.path);
-                    this.push(file);
-                    done();
-                }))
-                .pipe(uglify({
-                    compress: {
-                        //drop_console: true
-                    },
-                    output: {
-                        ascii_only: true,
-                        quote_keys: true
-                    }
-                })),
-             tsrc([
-                DSC+'*/js/**/*.js',
-                '!'+'/**/js/dist/**',
-                '!'+'/**/js/main/**',
-             ])
-                .pipe(tJS(true))
-                .pipe(tReplaceTmp())
-                .pipe(through.obj(function (file, enc, done) {
-                    console.log('trying to uglify js file: ' + file.path);
-                    this.push(file);
-                    done();
-                }))
-                .pipe(uglify({
-                    compress: {
-                        //drop_console: true
-                    },
-                    output: {
-                        ascii_only: true,
-                        quote_keys: true
-                    }
-                })),
-            tsrc([
-                DSC+'*/js/dist/**/*.js',
-                '!'+'/**/js/main/**',
-            ])
-                .pipe(taBase(dot))
-                .pipe(tRmFallbackPath())
-                .pipe(tReplaceTmp())
-        )
+                    pipeline.get('pack')
+                        .splice(0, 1,
+                        through.obj(function (row, enc, cb) {
+                            row = removeRowPrefix(row);
+                            this.push(row);
+                            cb();
+                        }),
+                        bpack(xtend(b._options, {
+                            raw: true,
+                            hasExports: false,
+                            prelude: bcp
+                        })));
+                },
+                basedir: DOT_ROOT,
+                commonJsPath: DSC+'common.js' //"node_modules" will be removed
+            }))
+            //.pipe(tReplaceDsc())
+            .pipe(through.obj(function (file, enc, done) {
+                console.log(file.path);
+                if (file.path === path.join(DOT_ROOT, DSC, 'common.js')) {
+                    console.log(1);
+                    this.push(new VFile({
+                        cwd: file.cwd,
+                        base: file.base,
+                        path: file.path.replace(/common\.js$/, 'global.js'),
+                        contents: new Buffer(globalSrc, 'utf-8'),
+                    }));
+                    console.log(2);
+                    this.push(new VFile({
+                        cwd: file.cwd,
+                        base: file.base,
+                        path: file.path.replace(/common\.js$/, 'global-common.js'),
+                        contents: new Buffer(globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + file.contents.toString(), 'utf-8'),
+                    }));
+                }
+                    console.log(3);
+                this.push(file);
+                done();
+            }))
+            .pipe(tReplaceTmp())
+            .pipe(through.obj(function (file, enc, done) {
+                console.log('trying to uglify js file: ' + file.path);
+                this.push(file);
+                done();
+            }))
+            .pipe(uglify({
+                compress: {
+                    //drop_console: true
+                },
+                output: {
+                    ascii_only: true,
+                    quote_keys: true
+                }
+            }))
             .pipe(rewrite(JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json'), 'utf-8'))))
             .pipe(tRev())
             .pipe(tDest());
     });
 
+    gulp.task('build-js', ['build-main-js']);
+
     gulp.task('build-rev', ['build-js'], function () {
         var revMap = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json')));
-        return tsrc([DSC+'*/partials/**/*.html', DSC+'*/views/**/*.html'])
-            .pipe(taBase(dot))
+        return src([DSC+'*/partials/**/*.html', DSC+'*/views/**/*.html'])
+            .pipe(tBase(dot))
             .pipe(through.obj(function (file, enc, cb) {
                 var contents = file.contents.toString();
                 console.log('- revving template: ', file.path);
@@ -636,7 +622,7 @@ module.exports = function (gulp, opts) {
     });
 
     gulp.task('build-and-clean', ['build-rev'], function () {
-        return tsrc('./dist/**/*')
+        return src('dist/**/*')
             .pipe(revOutdated(5))
             .pipe(vinylPaths(del));
     });
