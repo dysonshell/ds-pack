@@ -346,6 +346,13 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot));
     });
 
+    gulp.task('build-config', ['prepare-config'], function () {
+        return gulp.src('config/**/*', {cwd: DOT_ROOT})
+            //.pipe(tReplaceTmp())
+            .pipe(tBase('tmp'))
+            .pipe(dest('dist'));
+    });
+
     gulp.task('prepare-build', ['prepare'], function () {
         return gulp.src('**/*', {cwd: DOT_ROOT})
             //.pipe(tReplaceTmp())
