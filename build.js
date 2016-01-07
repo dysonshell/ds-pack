@@ -105,12 +105,6 @@ module.exports = function (gulp, opts) {
 
     function tRev(prefix) {
         return streamCombine(
-            through.obj(function (obj, enc, cb) {
-                console.log('4base', obj.base);
-                console.log('4path', obj.path);
-                this.push(obj);
-                cb();
-            }),
             tBase(prefix),
             rev()
         );
@@ -120,13 +114,6 @@ module.exports = function (gulp, opts) {
         var fullRevPath = path.join(APP_ROOT, 'dist', 'rev.json');
         return streamCombine(
             dest('dist'), // write revisioned assets to /dist
-            through.obj(function (obj, enc, cb) {
-                console.log(obj.path);
-                console.log('1base', obj.base);
-                console.log('1path', obj.path);
-                this.push(obj);
-                cb();
-            }),
             rev.manifest(fullRevPath, {
                 path: fullRevPath,
                 base: path.join(APP_ROOT, 'dist'),
@@ -153,14 +140,10 @@ module.exports = function (gulp, opts) {
 
     function tReplaceTmp() {
         return through.obj(function (file, enc, done) {
-            console.log('5base', file.base);
-            console.log('5path', file.path);
             file.base = file.base.replace('/'+dot+'/'+DSC, '/'+DSC);
             file.path = file.path.replace('/'+dot+'/'+DSC, '/'+DSC);
             file.base = file.base.replace('/'+dot, '/');
             file.path = file.path.replace('/'+dot, '/');
-            console.log('5base', file.base);
-            console.log('5path', file.path);
             this.push(file);
             done();
         });
@@ -209,7 +192,7 @@ module.exports = function (gulp, opts) {
         process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
         config = require('config');
         config.dsAppRoot = DOT_ROOT;
-        console.log(JSON.stringify(_.pick(config, Object.keys(config).filter(k => k.match(/^ds/))), null, '    '));
+        //console.log(JSON.stringify(_.pick(config, Object.keys(config).filter(k => k.match(/^ds/))), null, '    '));
         DSCns = (config.dsComponentPrefix || 'dsc').replace(/^\/+/, '').replace(/\/+$/, '');
         DSC = DSCns + '/';
         port = parseInt(process.env.PORT, 10) || config.port || 4000;
@@ -220,7 +203,7 @@ module.exports = function (gulp, opts) {
             if (p.match(/[-\/]$/)) return p;
             return p.replace(/^\/+/, '') + '/';
         })).filter(Boolean);
-        console.log(searchPrefix);
+        //console.log(searchPrefix);
 
         files.a = _.flatten([
             searchPrefix.map(p => (p.match(/-$/) || p === 'src/'+DSC ? [] : ['!' + p + 'preload.js']).concat([
@@ -256,13 +239,13 @@ module.exports = function (gulp, opts) {
             ])
         ], true).reverse()
 
-        console.log(files);
+        //console.log(files);
 
         files = _.mapValues(files, function (v) {
             return globby.sync(v, {cwd: APP_ROOT});
         });
 
-        console.log(files);
+        //console.log(files);
 
         /*
         console.log(afiles, njsfiles, bjsfiles, csfiles);
@@ -285,16 +268,16 @@ module.exports = function (gulp, opts) {
     function tRmFallbackPath() {
         return through.obj(function (file, enc, cb) {
             var firstMatch;
-            console.log(11, file.path);
+            //console.log(11, file.path);
             if (!searchPrefix || !searchPrefix.length ||
                     !(firstMatch = searchPrefix.filter(sp => file.path.indexOf(sp) > -1)[0])) {
                 this.push(file);
                 cb();
                 return;
             }
-            console.log(11, firstMatch);
+            //console.log(11, firstMatch);
             file.path = path.join(SRC_ROOT, DSC, file.path.substring(file.path.indexOf(firstMatch) + firstMatch.length));
-            console.log(11, file.path);
+            //console.log(11, file.path);
             this.push(file);
             cb();
         });
@@ -572,16 +555,16 @@ module.exports = function (gulp, opts) {
             }))
             //.pipe(tReplaceDsc())
             .pipe(through.obj(function (file, enc, done) {
-                console.log(file.path);
+                //console.log(file.path);
                 if (file.path === path.join(DOT_ROOT, DSC, 'common.js')) {
-                    console.log(1);
+                    //console.log(1);
                     this.push(new VFile({
                         cwd: file.cwd,
                         base: file.base,
                         path: file.path.replace(/common\.js$/, 'global.js'),
                         contents: new Buffer(globalSrc, 'utf-8'),
                     }));
-                    console.log(2);
+                    //console.log(2);
                     this.push(new VFile({
                         cwd: file.cwd,
                         base: file.base,
@@ -589,7 +572,7 @@ module.exports = function (gulp, opts) {
                         contents: new Buffer(globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + file.contents.toString(), 'utf-8'),
                     }));
                 }
-                    console.log(3);
+                    //console.log(3);
                 this.push(file);
                 done();
             }))
@@ -800,9 +783,11 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee compiled');
-                m.stop(function() {
-                    m.start()
-                })
+                if (path.relative(file.base, file.path).indexOf('/js/') === -1) {
+                    m.stop(function() {
+                        m.start()
+                    })
+                }
             });
 
 
@@ -819,9 +804,11 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] babel compiled');
-                m.stop(function() {
-                    m.start()
-                })
+                if (path.relative(file.base, file.path).indexOf('/js/') === -1) {
+                    m.stop(function() {
+                        m.start()
+                    })
+                }
             });
 
         watch(wafiles, {cwd: APP_ROOT})
