@@ -200,7 +200,6 @@ module.exports = function (gulp, opts) {
             })
     });
 
-    var afiles, njsfiles, bjsfiles, csfiles;
     var files = {};
     var wafiles = 'src/**/*';
     var wnjsfiles = 'src/**/*.js';
@@ -221,6 +220,7 @@ module.exports = function (gulp, opts) {
             if (p.match(/[-\/]$/)) return p;
             return p.replace(/^\/+/, '') + '/';
         })).filter(Boolean);
+        console.log(searchPrefix);
 
         files.a = _.flatten([
             searchPrefix.map(p => (p.match(/-$/) || p === 'src/'+DSC ? [] : ['!' + p + 'preload.js']).concat([
@@ -229,6 +229,7 @@ module.exports = function (gulp, opts) {
                 '' + p + '*/**/*',
             ])),
             'src/**/*',
+            '!src/config/**/*',
         ], true).reverse()
 
         files.njs = _.flatten([
@@ -236,7 +237,9 @@ module.exports = function (gulp, opts) {
                 '!' + p + '*/node_modules/**/*.js',
                 '!' + p + '*/js/**/*.js',
                 '' + p + '**/*.js',
-            ]))
+            ])),
+            'src/**/*.js',
+            '!src/config/**/*',
         ], true).reverse()
 
         files.bjs = _.flatten([
@@ -270,25 +273,28 @@ module.exports = function (gulp, opts) {
     gulp.task('prepare-assets', ['load-config'], function () {
         return gulp.src(files.a)
             .pipe(tOrigPath())
-            .pipe(tBase())
+            .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, ']',
-                '\n    copied from [', file.origPath, ']');
+                '\n    copied from [', file.origPath, '] base', file.base);
             })
     });
 
     function tRmFallbackPath() {
         return through.obj(function (file, enc, cb) {
             var firstMatch;
+            console.log(11, file.path);
             if (!searchPrefix || !searchPrefix.length ||
                     !(firstMatch = searchPrefix.filter(sp => file.path.indexOf(sp) > -1)[0])) {
                 this.push(file);
                 cb();
                 return;
             }
-            file.path = path.join(file.base, DSC, file.path.substring(file.path.indexOf(firstMatch) + firstMatch.length));
+            console.log(11, firstMatch);
+            file.path = path.join(SRC_ROOT, DSC, file.path.substring(file.path.indexOf(firstMatch) + firstMatch.length));
+            console.log(11, file.path);
             this.push(file);
             cb();
         });
@@ -296,7 +302,7 @@ module.exports = function (gulp, opts) {
     function tCoffee() {
         return streamCombine(
             tOrigPath(),
-            tBase(),
+            tBase('src'),
             coffee({bare: true}),
             tRmFallbackPath()
         );
@@ -305,24 +311,46 @@ module.exports = function (gulp, opts) {
     function tJS(browser) {
         return streamCombine(
             tOrigPath(),
-            tBase(),
-            babel({
-                presets: [
-                    browser
-                        ? require('babel-preset-dysonshell')
-                        : require('babel-preset-dysonshell/node-auto')
-                    ],
-            }),
+            tBase('src'),
+            tBabel(),
             tRmFallbackPath()
         );
     }
 
+    function tBabel() {
+        var t = through.obj(function (file, enc, cb) {
+            if (path.relative(file.base, file.path).match(/\/js\//)) {
+                b.push(file);
+            } else {
+                n.push(file);
+            }
+            cb();
+        });
+        t.on('end', t.push.bind(t, null));
+        var out = through.obj(function (file, enc, cb) {
+            t.push(file);
+            cb();
+        });
+        var b = through.obj();
+        var n = through.obj();
+        t.on('end', b.push.bind(b, null));
+        t.on('end', n.push.bind(n, null));
+        var nbabel = n.pipe(babel({
+            presets: [require('babel-preset-dysonshell/node-auto')],
+        })).pipe(out);
+        var bbabel = b.pipe(babel({
+            presets: [require('babel-preset-dysonshell')],
+        })).pipe(out);
+        return t;
+    }
 
     gulp.task('prepare-js', ['prepare-assets'], function () {
         return ms([
             gulp.src(files.cs).pipe(tCoffee()),
             gulp.src(files.njs).pipe(tJS()),
-            gulp.src(files.bjs).pipe(tJS(true)),
+            gulp.src(files.bjs).pipe(tJS()),
+            gulp.src(wncsfiles).pipe(tCoffee()),
+            gulp.src(wnjsfiles).pipe(tJS()),
         ])
             .pipe(dest(dot))
             .on('data', function (file) {
@@ -330,16 +358,12 @@ module.exports = function (gulp, opts) {
             })
     });
 
-    gulp.task('prepare', ['prepare-js', 'prepare-assets'])//, function () {
-        //return ms([
-            //src(['ccc/**', '!ccc/**/*.js']).pipe(tBase()),
-            //src(dot+'/**').pipe(tBase(dot))
-        //])
-            ////.pipe(tReplaceTmp())
-            //.pipe(dest('dist'));
-    //})
+    gulp.task('prepare', ['prepare-js', 'prepare-assets'], function () {
+        return gulp.src(['src/'+DSC+'**', '!**/*.js'], {cwd: APP_ROOT}).pipe(tBase('src'))
+            .pipe(dest(dot));
+    });
 
-    gulp.task('prepare-build', ['prepare-js', 'prepare-assets'], function () {
+    gulp.task('prepare-build', ['prepare'], function () {
         return gulp.src('**/*', {cwd: DOT_ROOT})
             //.pipe(tReplaceTmp())
             .pipe(tBase('tmp'))
@@ -738,11 +762,7 @@ module.exports = function (gulp, opts) {
             })();
         }));
         var aupdated = through.obj(function (file, enc, cb) {
-            if (file.path.match(/\.js$/)) {
-                if (path.relative(file.base, file.path).match(/\/js\//)) {
-                    this.push(file);
-                }
-            } else {
+            if (!file.path.match(/\.(js|coffee)$/)) {
                 this.push(file);
             }
             cb();
@@ -767,7 +787,7 @@ module.exports = function (gulp, opts) {
                 cb();
             });
         }));
-        watch(wncsfiles, {cwd: SRC_ROOT})
+        watch(wncsfiles, {cwd: APP_ROOT})
             .pipe(csupdated)
             .on('data', function (file) {
                 console.log('- [', file.path, '] coffee updated');
@@ -775,7 +795,7 @@ module.exports = function (gulp, opts) {
             .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
             .pipe(coffee({bare: true}))
-            .pipe(tBase())
+            .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
             .on('data', function (file) {
@@ -785,17 +805,16 @@ module.exports = function (gulp, opts) {
                 })
             });
 
-        watch(wnjsfiles, {cwd: SRC_ROOT})
+
+        watch(wnjsfiles, {cwd: APP_ROOT})
             .pipe(jsupdated)
             .on('data', function (file) {
                 console.log('- [', file.path, '] updated');
             })
             .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
-            .pipe(babel({
-                presets: [require('babel-preset-dysonshell/node-auto')],
-            }))
-            .pipe(tBase())
+            .pipe(tBabel())
+            .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
             .on('data', function (file) {
@@ -811,7 +830,7 @@ module.exports = function (gulp, opts) {
             .on('data', function (file) {
                 console.log('- [', file.path, '] updated');
             })
-            .pipe(tBase())
+            .pipe(tBase('src'))
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] copied');
