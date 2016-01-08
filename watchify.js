@@ -426,27 +426,14 @@ var initRouter = function () {
         }
         res.send(src[req.params[0]]);
     });
-    var babelMiddleware = babelConnect({
-        options: { presets: [require('babel-preset-dysonshell')], },
-        src: path.join(APP_ROOT),
-        dest: path.join(APP_ROOT, DSC, '.tmp', '_babel_cache'),
-    });
     router.get(new RegExp('^\\\/'+DSCns+'\\\/[^\\\/]+\\\/js\\\/.*\\.js$'), function (req, res, next) {
         var filePath;
         try {
             filePath = require.resolve(req.path.replace(/^\/+/, ''));
             req.url = '/' + path.relative(APP_ROOT, filePath);
         } catch (e) {}
-        if (!filePath) {
+        if (!filePath || req.path.indexOf('/js/main/') === -1) {
             return next();
-        }
-        if (req.path.indexOf('/js/dist/') > -1) {
-            res.type('js');
-            res.sendFile(filePath);
-            return;
-        } else if (req.path.indexOf('/js/main/') === -1) {
-            babelMiddleware(req, res, next);
-            return;
         }
         res.type('js');
         bundle(filePath)
