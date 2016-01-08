@@ -430,7 +430,6 @@ var initRouter = function () {
         var filePath;
         try {
             filePath = require.resolve(req.path.replace(/^\/+/, ''));
-            req.url = '/' + path.relative(APP_ROOT, filePath);
         } catch (e) {}
         if (!filePath || req.path.indexOf('/js/main/') === -1) {
             return next();
