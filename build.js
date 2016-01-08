@@ -184,9 +184,9 @@ module.exports = function (gulp, opts) {
     });
 
     var files = {};
-    var wafiles = 'src/**/*';
-    var wnjsfiles = 'src/**/*.js';
-    var wncsfiles = 'src/**/*.coffee';
+    var wafiles = ['src/**/*', '!**/*~'];
+    var wnjsfiles = ['src/**/*.js', '!**/*~'];
+    var wncsfiles = ['src/**/*.coffee', '!**/*~'];
 
     gulp.task('load-config', ['prepare-config'], function () {
         process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');

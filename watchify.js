@@ -19,7 +19,6 @@ var xtend = require('xtend');
 var partialify = require('partialify');
 var coffeeify = require('coffeeify');
 var babelify = require('babelify');
-var babelConnect = require('babel-connect');
 var grtrequire = require('grtrequire/watch');
 var es3ify = require('es3ify-safe');
 var bcpPath = require.resolve('browserify-common-prelude/dist/bcp.js');
