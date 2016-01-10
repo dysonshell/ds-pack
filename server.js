@@ -1,4 +1,5 @@
 'use strict';
+
 var assert = require('assert');
 var config = require('config');
 assert(config.dsAppRoot);
@@ -16,4 +17,9 @@ if (!port) {
 }
 require('./watchify')(port).catch(function (err) {
     console.error(err.stack);
+});
+
+process.on('disconnect', function() {
+  console.log('parent exited')
+  process.exit();
 });

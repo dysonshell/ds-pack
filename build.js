@@ -38,6 +38,7 @@ var factorBundle = require('gulp-factor-bundle');
 var uglify = require('gulp-uglify');
 var nano = require('gulp-cssnano');
 var revOutdated = require('gulp-rev-outdated');
+var sourcemaps = require('gulp-sourcemaps');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
@@ -221,6 +222,7 @@ module.exports = function (gulp, opts) {
                 '!' + p + '*/js/**/*.js',
                 '' + p + '**/*.js',
             ])),
+            '!src/*/js/dist/**/*.js',
             'src/**/*.js',
             '!src/config/**/*',
         ], true).reverse()
@@ -228,6 +230,7 @@ module.exports = function (gulp, opts) {
         files.bjs = _.flatten([
             'src/'+DSC+'preload.js',
             searchPrefix.map(p => [
+                '!' + p + '*/js/dist/**/*.js',
                 '' + p + '*/js/**/*.js',
             ])
         ], true).reverse()
@@ -286,7 +289,9 @@ module.exports = function (gulp, opts) {
         return streamCombine(
             tOrigPath(),
             tBase('src'),
+            sourcemaps.init(),
             coffee({bare: true}),
+            sourcemaps.write(),
             tRmFallbackPath()
         );
     }
@@ -295,7 +300,9 @@ module.exports = function (gulp, opts) {
         return streamCombine(
             tOrigPath(),
             tBase('src'),
+            sourcemaps.init(),
             tBabel(),
+            sourcemaps.write(),
             tRmFallbackPath()
         );
     }
@@ -650,7 +657,7 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('dev', ['prepare'], function () {
-        var m = respawn([process.execPath, path.join(DOT_ROOT, 'ccc', 'index.js')], {
+        var m = respawn([process.execPath, path.join(DOT_ROOT, 'index.js')], {
             cwd: DOT_ROOT,
             env: {
                 NODE_ENV: 'development',
@@ -784,7 +791,9 @@ module.exports = function (gulp, opts) {
             })
             .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(sourcemaps.init())
             .pipe(coffee({bare: true}))
+            .pipe(sourcemaps.write())
             .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
@@ -805,7 +814,9 @@ module.exports = function (gulp, opts) {
             })
             .pipe(readFileThrough())
             .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(sourcemaps.init())
             .pipe(tBabel())
+            .pipe(sourcemaps.init())
             .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
@@ -830,14 +841,18 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] copied');
             });
 
-        respawn([process.execPath, require.resolve('./server.js')], {
-            env: {
+        var fork = require('child_process').fork;
+
+        var w = fork(path.resolve(__dirname, './server.js'), {
+            env: xtend(process.env, {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
                 NODE_CONFIG_DIR: path.join(DOT_ROOT, 'config'),
-            },
-            sleep: 0,
-            stdio: 'inherit',
-        }).start();
+            }),
+        });
+        w.on('error', errorAlert);
+        w.on('error', console.error.bind(console, 'watchify process error'))
+        w.on('close', console.error.bind(console, 'watchify process closed'))
+        w.on('disconnect', console.error.bind(console, 'watchify process disconnected'))
     });
 };

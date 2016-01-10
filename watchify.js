@@ -411,6 +411,7 @@ var initRouter = function () {
     router.use(function (req, res, next) {
         allPromise.then(function () {
             next();
+            return null;
         });
     });
     var globalJsEtag = JSON.stringify(Date.now());
@@ -438,6 +439,7 @@ var initRouter = function () {
         .then(function (src) {
             res.set('etag', md5(src));
             res.send(src);
+            return null;
         })
         .catch(function (err) {
             var errStr = bundleErrStr(err);
@@ -504,30 +506,6 @@ var watchifyServer = Promise.coroutine(function *(port) {
     yield Promise.promisify(server.listen, {context: server})(port + 500);
     var address = server.address();
     console.log("watchify listening at http://127.0.0.1:%d", address.port);
-    var errCounter = 0;
-    function checkApp() {
-        return isTcpOn({host: '127.0.0.1', port: port}).catch(function () {
-            return false;
-        });
-    }
-    Promise.coroutine(function *() {
-        // 遇到过主进程没有了而 watchify 的进程还在的情况，所以在这里设置一个心跳检查
-        yield sleep(4000);
-        while (true) {
-            yield sleep(1000);
-            var checkResult = yield checkApp();
-            if (!checkResult && ++errCounter > 4) {
-                // 连续 5 秒的检测都失败才退出，因为可能是正好在重启
-                throw new Error('app server down');
-            } else {
-                errCounter = 0;
-            }
-        }
-    })().catch(function (e) {
-        process.nextTick(function () {
-            process.kill(process.pid, 'SIGTERM'); // 如果主网站不行了，给自己发 kill 信号
-        });
-    });
 })
 
 exports = module.exports = watchifyServer;
