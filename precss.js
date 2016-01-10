@@ -22,7 +22,7 @@ var list = glob.sync(DSC+'*/css/**/*.css', {
 });
 var allParsed = {};
 _.each(list, function (rpath) {
-    var obj = allParsed[rpath.replace(/tmp\//, '/')] = {
+    var obj = allParsed[rpath.replace(/^\/*(.)/, '/$1')] = {
         realPath: path.join(APP_ROOT, rpath),
     };
     obj.contents = fs.readFileSync(obj.realPath, 'utf8');
@@ -59,6 +59,9 @@ var replaced = _.transform(allParsed, function (r, obj, fpath) {
                     "comment": ipath + ' already imported early',
                 });
                 continue;
+            }
+            if (!allParsed[ipath]) {
+                throw new Error('"' + ipath + '" imported by "' + fpath + '" but not founded');
             }
             replaced[ipath] = 1;
             Array.prototype.splice.apply(parsed.rules, [i, 1, {
