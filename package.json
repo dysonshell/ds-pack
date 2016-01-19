@@ -33,7 +33,7 @@
     "anymatch": "^1",
     "babel-preset-dysonshell": "^1.0.1",
     "babelify": "^7",
-    "bluebird": "^3",
+    "bluebird": "^2",
     "browser-pack": "^6",
     "browserify": "^12",
     "browserify-common-prelude": "^0.5.4",
