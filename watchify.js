@@ -503,7 +503,7 @@ var watchifyServer = Promise.coroutine(function *(port) {
     watchifyApp.set('etag', false);
     watchifyApp.use(require('morgan')());
     watchifyApp.use('/node_modules', initRouter());
-    yield Promise.promisify(server.listen, {context: server})(port + 500);
+    yield Promise.promisify(server.listen, server)(port + 500);
     var address = server.address();
     console.log("watchify listening at http://127.0.0.1:%d", address.port);
 })
