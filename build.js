@@ -693,7 +693,7 @@ module.exports = function (gulp, opts) {
                 .value();
             paths.push(
                 path.join(SRC_ROOT, DSC, 'index.js'),
-                path.join(SRC_ROOT, DSC, 'index.coffee')
+                path.join(SRC_ROOT, DSC, 'index.coffee'),
                 path.join(SRC_ROOT, 'index.js'),
                 path.join(SRC_ROOT, 'index.coffee')
             );
