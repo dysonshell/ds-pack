@@ -1,6 +1,6 @@
 {
   "name": "ds-pack",
-  "version": "1.3.9",
+  "version": "1.3.10",
   "description": "DysonShell pack 工具(build for prod, watchify for dev)",
   "files": [
     "build.js",
