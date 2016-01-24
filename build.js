@@ -313,9 +313,7 @@ module.exports = function (gulp, opts) {
         return streamCombine(
             tOrigPath(),
             tBase('src'),
-            sourcemaps.init(),
             tBabel(),
-            sourcemaps.write(),
             plumber.stop(),
             tRmFallbackPath()
         );
@@ -341,14 +339,20 @@ module.exports = function (gulp, opts) {
         t.on('end', n.push.bind(n, null));
         var nbabel = n
             .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell/node-auto')],
-            })).pipe(out);
+            }))
+            .pipe(sourcemaps.write())
+            .pipe(out);
         var bbabel = b
             .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell')],
-            })).pipe(out);
+            }))
+            .pipe(sourcemaps.write())
+            .pipe(out);
         return t;
     }
 
@@ -833,9 +837,7 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] updated');
             })
             .pipe(readFileThrough())
-            .pipe(sourcemaps.init())
             .pipe(tBabel())
-            .pipe(sourcemaps.init())
             .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
