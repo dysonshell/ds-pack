@@ -157,6 +157,19 @@ module.exports = function (gulp, opts) {
             sound: "Sosumi",
         })(error); //Error Notification
         console.log(error.toString());//Prints Error to Console
+
+        // extract babel compile error hint
+        var stacks = (error.stack || '').split(/\n/g).slice(1);
+        var regexBabelHintWithLineNumber = /^[^\|]*\s+(\d+)?\s+\|/;
+        if (!(stacks[0]||'').match(regexBabelHintWithLineNumber)) {
+            return;
+        }
+        var r = [];
+        var line;
+        while ( ((line = stacks.shift()) || '').match(regexBabelHintWithLineNumber) ) {
+            r.push(line);
+        }
+        console.log(r.join('\n'));//Prints Error to Console
         //this.emit("end"); //End function
     };
 
@@ -303,6 +316,7 @@ module.exports = function (gulp, opts) {
             sourcemaps.init(),
             tBabel(),
             sourcemaps.write(),
+            plumber.stop(),
             tRmFallbackPath()
         );
     }
@@ -325,12 +339,16 @@ module.exports = function (gulp, opts) {
         var n = through.obj();
         t.on('end', b.push.bind(b, null));
         t.on('end', n.push.bind(n, null));
-        var nbabel = n.pipe(babel({
-            presets: [require('babel-preset-dysonshell/node-auto')],
-        })).pipe(out);
-        var bbabel = b.pipe(babel({
-            presets: [require('babel-preset-dysonshell')],
-        })).pipe(out);
+        var nbabel = n
+            .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(babel({
+                presets: [require('babel-preset-dysonshell/node-auto')],
+            })).pipe(out);
+        var bbabel = b
+            .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(babel({
+                presets: [require('babel-preset-dysonshell')],
+            })).pipe(out);
         return t;
     }
 
@@ -815,7 +833,6 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] updated');
             })
             .pipe(readFileThrough())
-            .pipe(plumber({errorHandler: errorAlert}))
             .pipe(sourcemaps.init())
             .pipe(tBabel())
             .pipe(sourcemaps.init())
