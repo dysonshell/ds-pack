@@ -24,6 +24,7 @@ var VFile = require('vinyl');
 var Promise = require('bluebird');
 var respawn = require('respawn');
 var mkdirp = require('mkdirp');
+var revHash = require('rev-hash');
 
 var unary = require('fn-unary');
 var watch = require('gulp-watch');
@@ -39,7 +40,6 @@ var uglify = require('gulp-uglify');
 var nano = require('gulp-cssnano');
 var revOutdated = require('gulp-rev-outdated');
 var sourcemaps = require('gulp-sourcemaps');
-var revHash = require('rev-hash');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
@@ -275,6 +275,14 @@ module.exports = function (gulp, opts) {
         } else {
             firstTime = true;
         }
+        var fallbacksVersion = fallbacks.map(fallback => {
+            var version = JSON.parse(fs.readFileSync(path.join(APP_ROOT, fallback, 'package.json'))).version;
+            return [fallback, version];
+        });
+        console.log(fallbacksVersion);
+        function getVersion(fp) {
+            return fallbacksVersion.filter(fv => fp.indexOf(fv[0]) > -1)[0][1];
+        }
         return gulp.src(files, {cwd: APP_ROOT})
         .pipe(through.obj(function (file, enc, cb) {
             file.base = APP_ROOT;
@@ -295,12 +303,14 @@ module.exports = function (gulp, opts) {
                             return;
                         }
                         var previousHash = copiedMap[file.destPath].revHash;
+                        var previousVersion = copiedMap[file.destPath].fromVersion;
                         // console.log(file.destPath, !!buf, buf.length, !!file.contents);
                         // console.log(previousHash === revHash(buf));
                         if (previousHash === revHash(buf)) {
                             // copied from fallback and not touched
                             file.revHash = revHash(file.contents);
-                            if (file.revHash !== previousHash) {
+                            file.fromVersion = getVersion(file.relPath);
+                            if (file.revHash !== previousHash && sermver.lt(previousVersion, file.fromVersion) {
                                 console.log('update', file.destPath);
                                 this.push(file);
                             }
@@ -321,8 +331,9 @@ module.exports = function (gulp, opts) {
                 return;
             }
             copiedMap[file.destPath] = {
-                revHash: file.revHash || revHash(file.contents),
                 copiedFrom: file.relPath,
+                fromVersion: file.fromVersion,
+                revHash: file.revHash || revHash(file.contents),
             };
             this.push(file);
             cb();
