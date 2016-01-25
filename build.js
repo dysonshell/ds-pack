@@ -310,7 +310,7 @@ module.exports = function (gulp, opts) {
                             // copied from fallback and not touched
                             file.revHash = revHash(file.contents);
                             file.fromVersion = getVersion(file.relPath);
-                            if (file.revHash !== previousHash && sermver.lt(previousVersion, file.fromVersion) {
+                            if (file.revHash !== previousHash && semver.lt(previousVersion, file.fromVersion)) {
                                 console.log('update', file.destPath);
                                 this.push(file);
                             }
