@@ -39,6 +39,7 @@ var uglify = require('gulp-uglify');
 var nano = require('gulp-cssnano');
 var revOutdated = require('gulp-rev-outdated');
 var sourcemaps = require('gulp-sourcemaps');
+var revHash = require('rev-hash');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
@@ -275,7 +276,7 @@ module.exports = function (gulp, opts) {
 
     gulp.task('init', ['load-config'], function () {
         var fallbacks = {};
-        globby.sync(searchPrefix.slice(1).map(d=>d+'*/'), {cwd:APP_ROOT}).forEach((fpath => {
+        globby.sync(searchPrefix.map(d=>d+'*/'), {cwd:APP_ROOT}).forEach((fpath => {
             var rfp = rmFallbackPath(fpath);
             if (fallbacks[rfp]) {
                 return;
@@ -359,14 +360,14 @@ module.exports = function (gulp, opts) {
             fs.writeFileSync(path.join(APP_ROOT, 'ds-copied-files.json'), JSON.stringify(copiedMap, null, '    '), 'utf-8');
             _.forEach(fallbacks, fp => {
                 var pta = path.join.bind(path, APP_ROOT);
+                var sourceDir = pta('src', rmFallbackPath(fp));
+                var source = path.join(sourceDir, 'node_modules');
                 var targetAbsolutePath = pta(fp, 'node_modules');
+                rimraf.sync(source);
                 if (!fs.existsSync(targetAbsolutePath)) {
                     return;
                 }
-                var sourceDir = pta('src', rmFallbackPath(fp));
-                var source = path.join(sourceDir, 'node_modules');
                 var target = path.relative(sourceDir, targetAbsolutePath);
-                rimraf.sync(source);
                 fs.symlinkSync(target, source, 'dir');
             });
             console.log('dysonshell installed components done (re)init.');
