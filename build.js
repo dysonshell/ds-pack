@@ -43,27 +43,6 @@ var revHash = require('rev-hash');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
-function ms(streams) {
-    var outStream = through.obj();
-    var len = streams.length;
-    var fileLists = [];
-    streams.forEach((stream, i) => {
-        stream.pipe(through.obj(function (file, enc, cb) {
-            var files = fileLists[i] || (fileLists[i] = []);
-            files.push(file);
-            cb();
-        }, function () {
-            --len || end();
-            this.end();
-        }));
-        stream.on('error', outStream.emit.bind(outStream, 'error'));
-    });
-    function end() {
-        es.readArray(_.flatten(fileLists)).pipe(outStream);
-    }
-    return outStream;
-}
-
 
 module.exports = function (gulp, opts) {
 
@@ -187,7 +166,7 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('prepare-config', ['rimraf'], function () {
-        return ms([
+        return es.merge([
             gulp.src('config/**/*.coffee', {cwd: SRC_ROOT}).pipe(tCoffee()),
             gulp.src('config/**/*.js', {cwd: SRC_ROOT}).pipe(tJS())
         ])
@@ -199,9 +178,9 @@ module.exports = function (gulp, opts) {
     });
 
     var files = {};
-    var wafiles = ['src/**/*', '!**/*~'];
-    var wnjsfiles = ['src/**/*.js', '!**/*~'];
-    var wncsfiles = ['src/**/*.coffee', '!**/*~'];
+    var wafiles = ['src/**/*', '!**/*~', '!src/'+DSC+'*/node_modules', '!src/'+DSC+'*/node_modules/**/*'];
+    var wnjsfiles = ['src/**/*.js', '!**/*~', '!src/'+DSC+'*/node_modules', '!src/'+DSC+'*/node_modules/**/*'];
+    var wncsfiles = ['src/**/*.coffee', '!**/*~', '!src/'+DSC+'*/node_modules', '!src/'+DSC+'*/node_modules/**/*'];
 
     gulp.task('load-config', ['prepare-config'], function () {
         process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
@@ -213,53 +192,47 @@ module.exports = function (gulp, opts) {
         port = parseInt(process.env.PORT, 10) || config.port || 4000;
         process.env.PORT = ''+port;
         dsRewriter = require('ds-rewriter');
-        if (process.argv.indexOf('init') > -1) {
-            searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
-                if (typeof p !== 'string') return false;
-                if (p.match(/[-\/]$/)) return p;
-                return p.replace(/^\/+/, '') + '/';
-            }).filter(Boolean);
-        } else {
-            searchPrefix = ['src/'+DSC];
-        }
+
+        searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
+            if (typeof p !== 'string') return false;
+            if (p.match(/[-\/]$/)) return p;
+            return p.replace(/^\/+/, '') + '/';
+        }).filter(Boolean);
+
+        var srcDSC = 'src/' + DSC;
         //console.log(searchPrefix);
 
-        files.a = _.flatten([
-            searchPrefix.map(p => (p.match(/-$/) || p === 'src/'+DSC ? [] : ['!' + p + 'preload.js']).concat([
-                '' + p + '*/js/dist/**/*.js',
-                '!' + p + '*/js/**/*.js',
-                '' + p + '*/**/*',
-            ])),
-            'src/**/*',
+        files.a = [
             '!src/config/**/*',
-        ], true).reverse()
+            'src/**/*',
+            '' + srcDSC + '*/**/*',
+            '!' + srcDSC + 'preload.js',
+            '!' + srcDSC + '*/js/**/*.js',
+            '' + srcDSC + '*/js/dist/**/*.js',
+            '!' + srcDSC + '*/node_modules',
+            '!' + srcDSC + '*/node_modules/**/*',
+        ];
 
-        files.njs = _.flatten([
-            searchPrefix.map(p => (p.match(/-$/) ? [] : ['!' + p + 'preload.js']).concat([
-                '!' + p + '*/node_modules/**/*.js',
-                '!' + p + '*/js/**/*.js',
-                '' + p + '**/*.js',
-            ])),
-            '!src/*/js/dist/**/*.js',
+        files.njs = [
             'src/**/*.js',
             '!src/config/**/*',
-        ], true).reverse()
+            '!src/*/js/dist/**/*.js',
+            '' + srcDSC + '**/*.js',
+            '!' + srcDSC + '*/js/**/*.js',
+            '!' + srcDSC + '*/node_modules/**/*.js',
+            '!' + srcDSC + 'preload.js',
+        ];
 
-        files.bjs = _.flatten([
+        files.bjs = [
+            '' + srcDSC + '*/js/**/*.js',
+            '!' + srcDSC + '*/js/dist/**/*.js',
             'src/'+DSC+'preload.js',
-            searchPrefix.map(p => [
-                '!' + p + '*/js/dist/**/*.js',
-                '' + p + '*/js/**/*.js',
-            ])
-        ], true).reverse()
+        ];
 
-        files.cs = _.flatten([
-            searchPrefix.map(p => [
-                '!' + p + '*/node_modules/**/*.coffee',
-                '' + p + '*/**/*.coffee',
-            ])
-        ], true).reverse()
-
+        files.cs = [
+            '' + srcDSC + '*/**/*.coffee',
+            '!' + srcDSC + '*/node_modules/**/*.coffee',
+        ];
         //console.log(files);
 
         files = _.mapValues(files, function (v) {
@@ -274,7 +247,7 @@ module.exports = function (gulp, opts) {
         */
     });
 
-    gulp.task('init', ['load-config'], function () {
+    function getFallbacks() {
         var fallbacks = {};
         globby.sync(searchPrefix.map(d=>d+'*/'), {cwd:APP_ROOT}).forEach((fpath => {
             var rfp = rmFallbackPath(fpath);
@@ -283,7 +256,11 @@ module.exports = function (gulp, opts) {
             }
             fallbacks[rfp] = fpath;
         }));
-        fallbacks = _.values(fallbacks);
+        return _.values(fallbacks);
+    }
+
+    gulp.task('init', ['load-config'], function () {
+        var fallbacks = getFallbacks();
         var files = globby.sync(_.flatten(fallbacks.map(f => [f+'**/*', '!'+f+'/node_modules/**/*', '!'+f+'/package.json'])), {cwd:APP_ROOT});
         files.forEach(fp => {
             var rfp = rmFallbackPath(fp);
@@ -358,18 +335,6 @@ module.exports = function (gulp, opts) {
         .pipe(dest())
         .on('end', function () {
             fs.writeFileSync(path.join(APP_ROOT, 'ds-copied-files.json'), JSON.stringify(copiedMap, null, '    '), 'utf-8');
-            _.forEach(fallbacks, fp => {
-                var pta = path.join.bind(path, APP_ROOT);
-                var sourceDir = pta('src', rmFallbackPath(fp));
-                var source = path.join(sourceDir, 'node_modules');
-                var targetAbsolutePath = pta(fp, 'node_modules');
-                rimraf.sync(source);
-                if (!fs.existsSync(targetAbsolutePath)) {
-                    return;
-                }
-                var target = path.relative(sourceDir, targetAbsolutePath);
-                fs.symlinkSync(target, source, 'dir');
-            });
             console.log('dysonshell installed components done (re)init.');
         })
     });
@@ -462,12 +427,12 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('prepare-js', ['prepare-assets'], function () {
-        return ms([
+        return es.merge([
             gulp.src(files.cs).pipe(tCoffee()),
             gulp.src(files.njs).pipe(tJS()),
             gulp.src(files.bjs).pipe(tJS()),
-            gulp.src(wncsfiles).pipe(tCoffee()),
-            gulp.src(wnjsfiles).pipe(tJS()),
+            // gulp.src(wncsfiles).pipe(tCoffee()),
+            // gulp.src(wnjsfiles).pipe(tJS()),
         ])
             .pipe(dest(dot))
             .on('data', function (file) {
@@ -475,8 +440,30 @@ module.exports = function (gulp, opts) {
             })
     });
 
+    function symlink(sdir) {
+        getFallbacks().forEach(fp => {
+            var pta = path.join.bind(path, APP_ROOT);
+            var sourceDir = pta(sdir, rmFallbackPath(fp));
+            var source = path.join(sourceDir, 'node_modules');
+            var targetAbsolutePath = pta(fp, 'node_modules');
+            rimraf.sync(source);
+            if (!fs.existsSync(targetAbsolutePath)) {
+                return;
+            }
+            var target = path.relative(sourceDir, targetAbsolutePath);
+            fs.symlinkSync(target, source, 'dir');
+        });
+    }
+
     gulp.task('prepare', ['prepare-js', 'prepare-assets'], function () {
-        return gulp.src(['src/'+DSC+'**', '!**/*.js'], {cwd: APP_ROOT}).pipe(tBase('src'))
+        symlink(dot);
+        return gulp.src([
+            'src/'+DSC+'**',
+            '!**/*.js',
+            '!src/'+DSC+'*/node_modules',
+            '!src/'+DSC+'*/node_modules/**/*'
+        ], {cwd: APP_ROOT})
+            .pipe(tBase('src'))
             .pipe(dest(dot));
     });
 
@@ -488,7 +475,10 @@ module.exports = function (gulp, opts) {
     });
 
     gulp.task('prepare-build', ['prepare'], function () {
-        return gulp.src('**/*', {cwd: DOT_ROOT})
+        globby.sync(['**/*.js', '!'+DSC+'global-*.js', '!'+DSC+'common-*.js', '!'+DSC+'*/js/**/*.js'], {cwd: path.join(APP_ROOT, 'dist')}).forEach(function (fp) {
+            rimraf.sync(path.join(APP_ROOT, 'dist', fp));
+        });
+        return gulp.src(['**/*', '!'+DSC+'*/node_modules', '!'+DSC+'*/node_modules/**/*'], {cwd: DOT_ROOT})
             //.pipe(tReplaceTmp())
             .pipe(tBase('tmp'))
             .pipe(dest('dist'));
@@ -775,7 +765,9 @@ module.exports = function (gulp, opts) {
             .pipe(vinylPaths(del));
     });
 
-    gulp.task('build', ['build-and-clean']);
+    gulp.task('build', ['build-and-clean'], function () {
+        symlink('dist');
+    });
 
     function exists(filePath) {
         return new Promise(function (resolve) {
@@ -809,15 +801,10 @@ module.exports = function (gulp, opts) {
 
         function getAvailableFallbackFile(filePath) {
             var relativeFilePathWithoutExt = path.relative(path.join(SRC_ROOT, DSCns), filePath.replace(/\..+?$/, ''));
-            var paths = _([DSC].concat(searchPrefix))
-                .map(function (dir) {
-                    return [
-                        path.join(SRC_ROOT, dir, relativeFilePathWithoutExt + '.js'),
-                        path.join(SRC_ROOT, dir, relativeFilePathWithoutExt + '.coffee'),
-                    ];
-                })
-                .flatten()
-                .value();
+            var paths = [
+                path.join(SRC_ROOT, DSC, relativeFilePathWithoutExt + '.js'),
+                path.join(SRC_ROOT, DSC, relativeFilePathWithoutExt + '.coffee'),
+            ];
             paths.push(
                 path.join(SRC_ROOT, DSC, 'index.js'),
                 path.join(SRC_ROOT, DSC, 'index.coffee'),
