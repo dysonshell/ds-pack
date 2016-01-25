@@ -212,11 +212,15 @@ module.exports = function (gulp, opts) {
         port = parseInt(process.env.PORT, 10) || config.port || 4000;
         process.env.PORT = ''+port;
         dsRewriter = require('ds-rewriter');
-        searchPrefix = ['src/'+DSC].concat((config.dsComponentFallbackPrefix || []).map(p => {
-            if (typeof p !== 'string') return false;
-            if (p.match(/[-\/]$/)) return p;
-            return p.replace(/^\/+/, '') + '/';
-        })).filter(Boolean);
+        if (process.argv.indexOf('init') > -1) {
+            searchPrefix = (config.dsComponentFallbackPrefix || []).map(p => {
+                if (typeof p !== 'string') return false;
+                if (p.match(/[-\/]$/)) return p;
+                return p.replace(/^\/+/, '') + '/';
+            }).filter(Boolean);
+        } else {
+            searchPrefix = ['src/'+DSC];
+        }
         //console.log(searchPrefix);
 
         files.a = _.flatten([
@@ -267,6 +271,106 @@ module.exports = function (gulp, opts) {
         console.log(afiles, njsfiles, bjsfiles, csfiles);
         console.log([afiles, njsfiles, bjsfiles, csfiles].map(d => globby.sync(d, {cwd: APP_ROOT})));
         */
+    });
+
+    gulp.task('init', ['load-config'], function () {
+        var fallbacks = {};
+        globby.sync(searchPrefix.slice(1).map(d=>d+'*/'), {cwd:APP_ROOT}).forEach((fpath => {
+            var rfp = rmFallbackPath(fpath);
+            if (fallbacks[rfp]) {
+                return;
+            }
+            fallbacks[rfp] = fpath;
+        }));
+        fallbacks = _.values(fallbacks);
+        var files = globby.sync(_.flatten(fallbacks.map(f => [f+'**/*', '!'+f+'/node_modules/**/*', '!'+f+'/package.json'])), {cwd:APP_ROOT});
+        files.forEach(fp => {
+            var rfp = rmFallbackPath(fp);
+            if (fs.existsSync(path.join(SRC_ROOT, rfp)) &&
+                fs.statSync(path.join(SRC_ROOT, rfp)).isFile()) {
+            }
+        });
+        var firstTime;
+        var copiedMap = {};
+        if (fs.existsSync(path.join(APP_ROOT, 'ds-copied-files.json'))) {
+            copiedMap = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'ds-copied-files.json'), 'utf-8'));
+        } else {
+            firstTime = true;
+        }
+        return gulp.src(files, {cwd: APP_ROOT})
+        .pipe(through.obj(function (file, enc, cb) {
+            file.base = APP_ROOT;
+            file.relPath = path.relative(file.base, file.path);
+            file.destPath = rmFallbackPath(file.relPath);
+            file.path = path.join(file.base, 'src', file.destPath);
+            fs.exists(file.path, exists => {
+                if (!exists) {
+                    this.push(file);
+                    cb();
+                    return;
+                }
+                if (!firstTime && copiedMap[file.destPath]) {
+                    fs.readFile(file.path, (err, buf) => {
+                        if (err) {
+                            console.log(err.stack);
+                            cb();
+                            return;
+                        }
+                        var previousHash = copiedMap[file.destPath].revHash;
+                        // console.log(file.destPath, !!buf, buf.length, !!file.contents);
+                        // console.log(previousHash === revHash(buf));
+                        if (previousHash === revHash(buf)) {
+                            // copied from fallback and not touched
+                            file.revHash = revHash(file.contents);
+                            if (file.revHash !== previousHash) {
+                                console.log('update', file.destPath);
+                                this.push(file);
+                            }
+                        } else {
+                            console.log(file.destPath, 'has been changed, skip update');
+                        }
+                        cb();
+                        //console.log(file.destPath, previousHash, file.revHash);
+                    });
+                } else {
+                    cb();
+                }
+            });
+        }))
+        .pipe(through.obj(function (file, enc, cb) {
+            if (!file.contents) {
+                cb();
+                return;
+            }
+            copiedMap[file.destPath] = {
+                revHash: file.revHash || revHash(file.contents),
+                copiedFrom: file.relPath,
+            };
+            this.push(file);
+            cb();
+        }))
+        .pipe(through.obj(function (file, enc, cb) {
+            console.log('copy', file.destPath, 'from', file.relPath);
+            this.push(file);
+            cb();
+        }))
+        .pipe(dest())
+        .on('end', function () {
+            fs.writeFileSync(path.join(APP_ROOT, 'ds-copied-files.json'), JSON.stringify(copiedMap, null, '    '), 'utf-8');
+            _.forEach(fallbacks, fp => {
+                var pta = path.join.bind(path, APP_ROOT);
+                var targetAbsolutePath = pta(fp, 'node_modules');
+                if (!fs.existsSync(targetAbsolutePath)) {
+                    return;
+                }
+                var sourceDir = pta('src', rmFallbackPath(fp));
+                var source = path.join(sourceDir, 'node_modules');
+                var target = path.relative(sourceDir, targetAbsolutePath);
+                rimraf.sync(source);
+                fs.symlinkSync(target, source, 'dir');
+            });
+            console.log('dysonshell installed components done (re)init.');
+        })
     });
 
     gulp.task('prepare-assets', ['load-config'], function () {
