@@ -203,9 +203,9 @@ module.exports = function (gulp, opts) {
         //console.log(searchPrefix);
 
         files.a = [
-            '!src/config/**/*',
             'src/**/*',
             '' + srcDSC + '*/**/*',
+            '!src/config/**/*',
             '!' + srcDSC + 'preload.js',
             '!' + srcDSC + '*/js/**/*.js',
             '' + srcDSC + '*/js/dist/**/*.js',
@@ -390,7 +390,7 @@ module.exports = function (gulp, opts) {
         );
     }
 
-    function tJS(browser) {
+    function tJS() {
         return streamCombine(
             tOrigPath(),
             tBase('src'),
@@ -470,6 +470,7 @@ module.exports = function (gulp, opts) {
         symlink(dot);
         return gulp.src([
             'src/'+DSC+'**',
+            '!src/'+DSC+'/config/**/*',
             '!**/*.js',
             '!src/'+DSC+'*/node_modules',
             '!src/'+DSC+'*/node_modules/**/*'
