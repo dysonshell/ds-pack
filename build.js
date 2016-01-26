@@ -332,7 +332,7 @@ module.exports = function (gulp, opts) {
             }
             copiedMap[file.destPath] = {
                 copiedFrom: file.relPath,
-                fromVersion: file.fromVersion,
+                fromVersion: file.fromVersion || getVersion(file.relPath),
                 revHash: file.revHash || revHash(file.contents),
             };
             this.push(file);
