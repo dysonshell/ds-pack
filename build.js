@@ -390,17 +390,18 @@ module.exports = function (gulp, opts) {
         );
     }
 
-    function tJS() {
-        return streamCombine(
+    function tJS(plugPlumber) {
+        return streamCombine.apply(null, [
             tOrigPath(),
             tBase('src'),
-            tBabel(),
-            plumber.stop(),
-            tRmFallbackPath()
+            tBabel(plugPlumber)
+        ].concat(plugPlumber
+            ? [plumber.stop(), tRmFallbackPath()]
+            : [tRmFallbackPath()])
         );
     }
 
-    function tBabel() {
+    function tBabel(plugPlumber) {
         var t = through.obj(function (file, enc, cb) {
             if (path.relative(file.base, file.path).match(/\/js\//)) {
                 b.push(file);
@@ -418,16 +419,14 @@ module.exports = function (gulp, opts) {
         var n = through.obj();
         t.on('end', b.push.bind(b, null));
         t.on('end', n.push.bind(n, null));
-        var nbabel = n
-            .pipe(plumber({errorHandler: errorAlert}))
+        var nbabel = (plugPlumber ? n.pipe(plumber({errorHandler: errorAlert})) : n)
             .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell/node-auto')],
             }))
             .pipe(sourcemaps.write())
             .pipe(out);
-        var bbabel = b
-            .pipe(plumber({errorHandler: errorAlert}))
+        var bbabel = (plugPlumber ? b.pipe(plumber({errorHandler: errorAlert})) : b)
             .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell')],
@@ -941,7 +940,7 @@ module.exports = function (gulp, opts) {
                 console.log('- [', file.path, '] updated');
             })
             .pipe(readFileThrough())
-            .pipe(tBabel())
+            .pipe(tBabel(true))
             .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
             .pipe(dest(dot))
