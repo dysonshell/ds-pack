@@ -419,14 +419,14 @@ module.exports = function (gulp, opts) {
         var n = through.obj();
         t.on('end', b.push.bind(b, null));
         t.on('end', n.push.bind(n, null));
-        var nbabel = (plugPlumber ? n.pipe(plumber({errorHandler: errorAlert})) : n)
+        ;(plugPlumber ? n.pipe(plumber({errorHandler: errorAlert})) : n)
             .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell/node-auto')],
             }))
             .pipe(sourcemaps.write())
             .pipe(out);
-        var bbabel = (plugPlumber ? b.pipe(plumber({errorHandler: errorAlert})) : b)
+        ;(plugPlumber ? b.pipe(plumber({errorHandler: errorAlert})) : b)
             .pipe(sourcemaps.init())
             .pipe(babel({
                 presets: [require('babel-preset-dysonshell')],
@@ -454,6 +454,9 @@ module.exports = function (gulp, opts) {
         getFallbacks().forEach(fp => {
             var pta = path.join.bind(path, APP_ROOT);
             var sourceDir = pta(sdir, rmFallbackPath(fp));
+            if (!fs.existsSync(sourceDir)) {
+                return;
+            }
             var source = path.join(sourceDir, 'node_modules');
             var targetAbsolutePath = pta(fp, 'node_modules');
             rimraf.sync(source);
