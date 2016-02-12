@@ -20,7 +20,7 @@ var partialify = require('partialify');
 var coffeeify = require('coffeeify');
 var babelify = require('babelify');
 var grtrequire = require('grtrequire/watch');
-var es3ify = require('es3ify-safe');
+var es3ify = require('es3ify');
 var bcpPath = require.resolve('browserify-common-prelude/dist/bcp.js');
 var bcp = fs.readFileSync(bcpPath, 'utf-8');
 
