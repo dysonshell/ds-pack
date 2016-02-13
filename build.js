@@ -216,10 +216,10 @@ module.exports = function (gulp, opts) {
         files.njs = [
             'src/**/*.js',
             '!src/config/**/*',
-            '!src/*/js/dist/**/*.js',
+            '!src/**/js/dist/**/*.js',
+            '!src/**/node_modules/**/*.js',
             '' + srcDSC + '**/*.js',
             '!' + srcDSC + '*/js/**/*.js',
-            '!' + srcDSC + '*/node_modules/**/*.js',
             '!' + srcDSC + 'preload.js',
         ];
 
