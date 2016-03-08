@@ -40,6 +40,7 @@ var uglify = require('gulp-uglify');
 var nano = require('gulp-cssnano');
 var revOutdated = require('gulp-rev-outdated');
 var sourcemaps = require('gulp-sourcemaps');
+var jsonlint = require('gulp-jsonlint');
 
 var bufferFile = require('vinyl-fs/lib/src/getContents/bufferFile');
 
@@ -352,6 +353,7 @@ module.exports = function (gulp, opts) {
 
     gulp.task('prepare-assets', ['load-config'], function () {
         return gulp.src(files.a)
+            .pipe(aupdated())
             .pipe(tOrigPath())
             .pipe(tBase('src'))
             .pipe(tRmFallbackPath())
@@ -789,6 +791,33 @@ module.exports = function (gulp, opts) {
         });
     }
 
+    function aupdated(ignoreJsCoffee) {
+        return through.obj(function (file, enc, cb) {
+            var tIn = through.obj();
+            var tOut = through.obj((file, enc, innercb) => {
+            console.log(arguments);
+                if (file.jsonlint.success) {
+                    this.push(file);
+                } else {
+                    this.emit('error', new Error('\n' + file.path + '\n' + file.jsonlint.message));
+                }
+                innercb();
+                cb();
+            });
+            if (file.path.match(/\.(json)$/i)) {
+                tIn.push(file);
+            } else {
+                if (!ignoreJsCoffee || !file.path.match(/\.(js|coffee)$/i)) {
+                    this.push(file);
+                }
+                cb();
+            }
+            tIn
+                .pipe(jsonlint())
+                .pipe(tOut);
+        });
+    }
+
     gulp.task('dev', ['prepare'], function () {
         var m = respawn([process.execPath, path.join(DOT_ROOT, 'index.js')], {
             cwd: DOT_ROOT,
@@ -888,12 +917,6 @@ module.exports = function (gulp, opts) {
                 cb();
             })();
         }));
-        var aupdated = through.obj(function (file, enc, cb) {
-            if (!file.path.match(/\.(js|coffee)$/)) {
-                this.push(file);
-            }
-            cb();
-        });
         var jsupdate = through.obj();
         var jsupdated = jsupdate.pipe(through.obj(function (file, enc, cb) {
             fs.exists(file.path, exists => {
@@ -957,8 +980,9 @@ module.exports = function (gulp, opts) {
             });
 
         watch(wafiles, {cwd: APP_ROOT})
-            //.pipe(watch(wbjsfiles))
-            .pipe(aupdated)
+            .pipe(plumber({errorHandler: errorAlert}))
+            .pipe(aupdated(true))
+            .pipe(plumber.stop())
             .on('data', function (file) {
                 console.log('- [', file.path, '] updated');
             })
@@ -966,6 +990,11 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] copied');
+                if (file.path.match(/\.(json)$/i)) {
+                    m.stop(function() {
+                        m.start()
+                    })
+                }
             });
 
         var fork = require('child_process').fork;

@@ -60,6 +60,7 @@
     "gulp-cssnano": "^2.0.0",
     "gulp-factor-bundle": "^0.2.1",
     "gulp-file": "^0.2.0",
+    "gulp-jsonlint": "^1.1.2",
     "gulp-notify": "^2.2.0",
     "gulp-plumber": "^1.0.1",
     "gulp-rename": "^1.2.0",
