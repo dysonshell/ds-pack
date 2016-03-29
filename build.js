@@ -184,7 +184,7 @@ module.exports = function (gulp, opts) {
     var wncsfiles = ['src/**/*.coffee', '!**/*~', '!src/'+DSC+'*/node_modules', '!src/'+DSC+'*/node_modules/**/*'];
 
     gulp.task('load-config', ['prepare-config'], function () {
-        process.env.NODE_CONFIG_DIR = path.join(DOT_ROOT, 'config');
+        process.env.NODE_CONFIG_DIR = path.join(APP_ROOT, 'config');
         config = require('config');
         config.dsAppRoot = DOT_ROOT;
         //console.log(JSON.stringify(_.pick(config, Object.keys(config).filter(k => k.match(/^ds/))), null, '    '));
@@ -824,7 +824,7 @@ module.exports = function (gulp, opts) {
             env: {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
-                NODE_CONFIG_DIR: path.join(DOT_ROOT, 'config'),
+                NODE_CONFIG_DIR: path.join(APP_ROOT, 'config'),
             },
             maxRestarts: 0,
             sleep: 0,
@@ -1003,7 +1003,7 @@ module.exports = function (gulp, opts) {
             env: xtend(process.env, {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
-                NODE_CONFIG_DIR: path.join(DOT_ROOT, 'config'),
+                NODE_CONFIG_DIR: path.join(APP_ROOT, 'config'),
             }),
         });
         w.on('error', errorAlert);
