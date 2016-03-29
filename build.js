@@ -821,11 +821,10 @@ module.exports = function (gulp, opts) {
     gulp.task('dev', ['prepare'], function () {
         var m = respawn([process.execPath, path.join(DOT_ROOT, 'index.js')], {
             cwd: DOT_ROOT,
-            env: {
+            env: xtend(process.env, {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
-                NODE_CONFIG_DIR: path.join(APP_ROOT, 'config'),
-            },
+            }),
             maxRestarts: 0,
             sleep: 0,
             stdio: 'inherit',
@@ -1003,7 +1002,6 @@ module.exports = function (gulp, opts) {
             env: xtend(process.env, {
                 NODE_ENV: 'development',
                 NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
-                NODE_CONFIG_DIR: path.join(APP_ROOT, 'config'),
             }),
         });
         w.on('error', errorAlert);
