@@ -747,7 +747,7 @@ module.exports = function (gulp, opts) {
 
     gulp.task('build-rev', ['build-js'], function () {
         var revMap = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'dist', 'rev.json')));
-        return src([DSC+'*/partials/**/*.html', DSC+'*/views/**/*.html'])
+        return src([DSC+'**/*.html'])
             .pipe(tBase(dot))
             .pipe(through.obj(function (file, enc, cb) {
                 var contents = file.contents.toString();
