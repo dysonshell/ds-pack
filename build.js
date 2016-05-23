@@ -971,7 +971,11 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] babel compiled');
-                if (path.relative(file.base, file.path).indexOf('/js/') === -1) {
+                if (path.relative(file.base, file.path).indexOf('/js/') > -1) {
+                    if (gulp.browserSync) {
+                      gulp.browserSync.reload();
+                    }
+                } else {
                     m.stop(function() {
                         m.start()
                     })
