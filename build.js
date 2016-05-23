@@ -989,10 +989,8 @@ module.exports = function (gulp, opts) {
             .pipe(dest(dot))
             .on('data', function (file) {
                 console.log('- [', file.path, '] copied');
-                if (file.path.match(/\.(json)$/i)) {
-                    m.stop(function() {
-                        m.start()
-                    })
+                if (gulp.browserSync) {
+                  gulp.browserSync.reload();
                 }
             });
 
