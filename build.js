@@ -49,7 +49,7 @@ module.exports = function (gulp, opts) {
 
     // config
     var APP_ROOT = path.resolve(__dirname, '..', '..').replace(/node_modules[\\\/]dysonshell$/, '');
-    var dot = /^dev/.test(process.argv[2]) ? 'dev' : 'tmp';
+    var dot = /^dev(-|$)/.test(process.argv[2]) ? 'dev' : 'tmp';
     var SRC_ROOT = path.join(APP_ROOT, 'src');
     var DOT_ROOT = path.join(APP_ROOT, dot);
     var config, port, dsRewriter, searchPrefix, DSC, DSCns;
