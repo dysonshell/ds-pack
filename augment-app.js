@@ -20,8 +20,13 @@ module.exports = function (app, appPort) {
     var proxy = httpProxy.createProxyServer({
         target: target,
     });
+    var globalRegExp = new RegExp('^\\\/'+DSCns+'\\\/(global|global-common|common)\\.js');
     app.get(new RegExp('^(\\\/-)?\\\/(node_modules|'+DSCns+')\\\/.+\\.js$'), function (req, res, next) {
-        return proxy.web(req, res, null, next);
+        if (globalRegExp.test(req.url) || /\/js\/main\//i.test(req.url)) {
+            return proxy.web(req, res, null, next);
+        } else {
+            next();
+        }
     });
     var proxySockjs = httpProxy.createProxyServer({
         target: 'http://127.0.0.1:' + (appPort + 500),

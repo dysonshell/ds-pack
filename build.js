@@ -406,7 +406,11 @@ module.exports = function (gulp, opts) {
     function tBabel(plugPlumber) {
         var t = through.obj(function (file, enc, cb) {
             if (path.relative(file.base, file.path).match(/\/js\//)) {
-                b.push(file);
+                if (path.relative(file.base, file.path).match(/\/js\/dist\//)) {
+                    r.push(file);
+                } else {
+                    b.push(file);
+                }
             } else {
                 n.push(file);
             }
@@ -418,8 +422,10 @@ module.exports = function (gulp, opts) {
             cb();
         });
         var b = through.obj();
+        var r = through.obj();
         var n = through.obj();
         t.on('end', b.push.bind(b, null));
+        t.on('end', r.push.bind(r, null));
         t.on('end', n.push.bind(n, null));
         ;(plugPlumber ? n.pipe(plumber({errorHandler: errorAlert})) : n)
             .pipe(sourcemaps.init())
@@ -435,6 +441,7 @@ module.exports = function (gulp, opts) {
             }))
             .pipe(sourcemaps.write())
             .pipe(out);
+        r.pipe(out);
         return t;
     }
 
