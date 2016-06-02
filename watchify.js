@@ -390,7 +390,7 @@ var initRouter = function () {
             res.end();
             return;
         }
-        res.send(src[req.params[0]]);
+        res.send(src.global);
     });
     router.get(new RegExp('^\\\/'+DSCns+'\\\/[^\\\/]+\\\/js\\\/.*\\.js$'), function (req, res, next) {
         var filePath;
