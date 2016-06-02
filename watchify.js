@@ -19,8 +19,6 @@ var xtend = require('xtend');
 var partialify = require('partialify');
 var coffeeify = require('coffeeify');
 var babelify = require('babelify');
-var grtrequire = require('grtrequire/watch');
-var es3ify = require('es3ify');
 var bcpPath = require.resolve('browserify-common-prelude/dist/bcp.js');
 var bcp = fs.readFileSync(bcpPath, 'utf-8');
 
@@ -243,16 +241,11 @@ function watchify(b, opts) {
 function alterPipeline(b, opts) {
     opts = opts || {};
     b
-        .transform(grtrequire)
         .transform(partialify)
-        .transform(coffeeify, {bare: true})
         .transform(babelify, {
             presets: [require('babel-preset-dysonshell')],
             only: new RegExp('\\\/' + DSCns + '\\\/'),
         })
-    if (config.dsSupportIE8) {
-        b.transform(es3ify, {global: true});
-    }
     b.pipeline.get('dedupe').splice(0, 1); // arguments[4] bug
     b.pipeline.get('pack')
         .splice(0, 1, through.obj(function (row, enc, next) {
@@ -403,8 +396,7 @@ var initRouter = function () {
         var globalSrc = results[0].toString();
         var preloadSrc = results[1].toString();
         src = {
-            global: (preloadSrc + ';' + globalSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
-            'global-common': (preloadSrc + ';' + globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + commonSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
+            'global': (preloadSrc + ';' + globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + commonSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
             common: commonSrc,
         };
     });
