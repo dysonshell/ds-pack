@@ -77,15 +77,8 @@ function sleep(ms) {
 function alterPath(filePath) {
     return filePath
         .replace(/^([^\/])/, '/$1')
-        .replace(/^\/.tmp\//, '/')
+        .replace(/^\/(dev|tmp)\//, '/')
         ;
-}
-
-function getRelativePath(filePath) {
-    return alterPath(
-        path.relative(
-            path.dirname(APP_ROOT, '.tmp'), // original APP_ROOT
-            filePath));
 }
 
 function removeRowPrefix(row) {
@@ -103,16 +96,14 @@ function removeRowPrefix(row) {
     }
     return row;
 }
-var rAppRoot = APP_ROOT.match(/\.tmp\/?$/) ?
-        APP_ROOT.replace(/\/\.tmp\/?$/, '') :
+var rAppRoot = APP_ROOT.match(/\/(dev|tmp)\/?$/) ?
+        APP_ROOT.replace(/\/(dev|tmp)\/?$/, '') :
         APP_ROOT;
 function removePrefix(filepath) {
     if (filepath.indexOf(rAppRoot) === 0) {
         filepath = filepath.substring(rAppRoot.length);
     }
-    if (filepath.indexOf('/.tmp/') === 0) {
-        filepath = filepath.replace(/^\/+(\.tmp\/)?/, '');
-    }
+    filepath = filepath.replace(/^\/+(dev\/|tmp\/)?/, '');
     filepath = filepath.replace(/^(\/)?\.\.\/node_modules\//, '$1node_modules/');
     filepath = rmFallbackPath(filepath);
     return filepath.replace(/^(?:\/+)?(.)/, '/$1');
@@ -282,12 +273,6 @@ var bundle = Promise.coroutine(function* (fullPath, opts) {
     if (!fullPath) {
         return src;
     }
-    var tmpSavePath = getTmpSavePath(fullPath);
-    if (tmpSavePath) {
-        yield Promise.promisify(mkdirp)(path.dirname(tmpSavePath));
-        console.log('write template file:', tmpSavePath);
-        yield writeFile(tmpSavePath, src);
-    }
     return src;
 });
 
@@ -356,15 +341,6 @@ function bundleErrStr(err) {
     console.log(errStr);
     return errStr;
 }
-function getTmpSavePath(filePath) {
-    var reqId = path.relative(APP_ROOT, filePath);
-    if (reqId.indexOf(DSC) !== 0) {
-        return false;
-    }
-    var tmpSaveFile = reqId.replace(DSC, DSC + '.tmp/');
-    var tmpSavePath = path.join(APP_ROOT, tmpSaveFile);
-    return tmpSavePath;
-}
 
 var initRouter = function () {
     var router = express.Router();
@@ -381,7 +357,6 @@ var initRouter = function () {
         watch: false,
         preludeSync: true,
     });
-    var commonSrc = '\n;' + bcp + '({});';
     var watchAllPartials = bundle(false, {
         watch: true,
         alterb: function (b) {
@@ -396,8 +371,7 @@ var initRouter = function () {
         var globalSrc = results[0].toString();
         var preloadSrc = results[1].toString();
         src = {
-            'global': (preloadSrc + ';' + globalSrc.replace(/\[\]\)([\r\n\s]+\/\/#\s+sourceMapping)/, '[false])$1') + ';' + commonSrc).replace(/[\r\n]\/\/#\s+sourceMapping[^\r\n]*/g, ''),
-            common: commonSrc,
+            'global': (preloadSrc + ';' + globalSrc),
         };
     });
     router.use(function (req, res, next) {
@@ -407,7 +381,7 @@ var initRouter = function () {
         });
     });
     var globalJsEtag = JSON.stringify(Date.now());
-    router.get(new RegExp('^\\\/'+DSCns+'\\\/(global|global-common|common)\\.js'), function (req, res) {
+    router.get(new RegExp('^\\\/'+DSCns+'\\\/global\\.js'), function (req, res) {
         res.type('js');
         res.set('cache-control', 'public,max-age=' + (60 * 60 * 24));
         res.set('etag', globalJsEtag);

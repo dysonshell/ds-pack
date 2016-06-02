@@ -211,7 +211,7 @@ module.exports = function (gulp, opts) {
     files.a = [
         'src/**/*',
         '' + srcDSC + '*/**/*',
-        '!' + srcDSC + 'preload.js',
+        '' + srcDSC + 'preload.js',
         '!' + srcDSC + '*/js/**/*.js',
         '' + srcDSC + '*/js/dist/**/*.js',
         '!' + srcDSC + '*/node_modules',
@@ -230,7 +230,7 @@ module.exports = function (gulp, opts) {
     files.bjs = [
         '' + srcDSC + '*/js/**/*.js',
         '!' + srcDSC + '*/js/dist/**/*.js',
-        'src/'+DSC+'preload.js',
+        ''+srcDSC+'preload.js',
     ];
     //console.log(files);
 
@@ -578,22 +578,21 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('build-global-js', ['build-assets'], function() {
-        return Promise.coroutine(function *() {
-            var globalSrc =
-            (yield dsWatchify.bundle(globalPreloadPath, {
-                watch: false,
-                preludeSync: true,
-            })).toString() + '\n;' +
-            (yield dsWatchify.bundle(false, {
-                global: true,
-                watch: false,
-                alterb: function (b) {
-                    globalLibs.forEach(function (x) {
-                        b.require(x[0], {expose: x[1] || x[0]});
-                    });
-                },
-            })).toString();
+        return Promise.all([dsWatchify.bundle(globalPreloadPath, {
+            watch: false,
+            preludeSync: true,
+        }), dsWatchify.bundle(false, {
+            global: true,
+            watch: false,
+            alterb: function (b) {
+                globalLibs.forEach(function (x) {
+                    b.require(x[0], {expose: x[1] || x[0]});
+                });
+            },
+        })]).then(function(a) {
+            var globalSrc = a[0].toString() + '\n;' + a[1].toString()
             fs.writeFileSync(path.join(DOT_ROOT, DSC, 'global.js'), globalSrc, 'utf-8')
+            return globalSrc
         });
     });
 
