@@ -727,18 +727,20 @@ module.exports = function (gulp, opts) {
     }
 
     gulp.task('dev', ['prepare'], function () {
-        var m = respawn([process.execPath, path.join(DOT_ROOT, 'index.js')], {
-            cwd: DOT_ROOT,
-            env: xtend(process.env, {
-                NODE_ENV: 'development',
-                NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
-            }),
-            maxRestarts: 0,
-            sleep: 0,
-            stdio: 'inherit',
-        });
-        m.start();
-        m.on('exit', function (code, signal) {
+        var fork = require('child_process').fork;
+        var m
+        var forkMain = function() {
+            m = fork(path.join(DOT_ROOT, 'index.js'), {
+                cwd: DOT_ROOT,
+                env: xtend(process.env, {
+                    NODE_ENV: 'development',
+                    NODE_CONFIG: '{"dsAppRoot":"'+DOT_ROOT+'"}',
+                }),
+                stdio: 'inherit',
+            });
+        }
+        forkMain()
+        m.on('close', function (code, signal) {
             if (!code) {
                 return;
             }
@@ -830,9 +832,8 @@ module.exports = function (gulp, opts) {
                       gulp.browserSync.reload();
                     }
                 } else {
-                    m.stop(function() {
-                        m.start()
-                    })
+                    m.kill()
+                    forkMain()
                 }
             });
 
@@ -851,8 +852,6 @@ module.exports = function (gulp, opts) {
                   gulp.browserSync.reload();
                 }
             });
-
-        var fork = require('child_process').fork;
 
         var w = fork(path.resolve(__dirname, './server.js'), {
             env: xtend(process.env, {
